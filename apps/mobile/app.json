@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Arcana",
+    "slug": "arcana",
+    "scheme": "arcana",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#14101c",
+    "plugins": ["expo-router"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.arcana.mobile"
+    },
+    "android": {
+      "package": "app.arcana.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#14101c"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
