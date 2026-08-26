@@ -21,6 +21,17 @@
     },
     "web": {
       "bundler": "metro"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/aa53da83-07a9-4238-a756-1fc380bb6442"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "aa53da83-07a9-4238-a756-1fc380bb6442"
+      }
     }
   }
 }

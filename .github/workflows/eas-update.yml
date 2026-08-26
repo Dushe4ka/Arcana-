@@ -1,0 +1,40 @@
+name: Publish Expo Go preview
+
+# Publishes the mobile app to Expo's servers so it can be opened instantly in the Expo Go
+# app (no native build, no local terminal needed) - runs on GitHub's own machines, which is
+# why this exists as a workflow instead of a command run from a developer's computer.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile/**"
+      - "packages/shared/**"
+      - ".github/workflows/eas-update.yml"
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build shared package
+        run: pnpm --filter @arcana/shared build
+
+      - name: Publish update to the "preview" branch
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli update --branch preview --message "Auto-publish ${{ github.sha }}" --non-interactive
