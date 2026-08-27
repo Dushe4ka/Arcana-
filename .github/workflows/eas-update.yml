@@ -37,4 +37,5 @@ jobs:
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
         run: npx eas-cli update --branch preview --message "Auto-publish ${{ github.sha }}" --non-interactive
