@@ -44,7 +44,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.screen}>
-      <Scene3DBackground variant="ambient" />
+      <Scene3DBackground />
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.identity}>
           <View style={styles.avatar}>

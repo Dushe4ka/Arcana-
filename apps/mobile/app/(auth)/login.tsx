@@ -13,11 +13,15 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import heroImage from "../../assets/images/login-hero.jpg";
 import { Button } from "../../components/Button";
-import { GoldTitle } from "../../components/GoldTitle";
-import { Scene3DBackground } from "../../components/Scene3DBackground";
 import { TextField } from "../../components/TextField";
 import { useAuthStore } from "../../lib/auth-store";
-import { mysticColors } from "../../lib/theme";
+import { colors } from "../../lib/theme";
+
+// The hero photo is 1152x1536 (0.75 aspect) with the ARCANA title baked into
+// its top band - the hero container below is sized close to that aspect so
+// resizeMode="cover" crops from the sides rather than the top, and never
+// clips the title.
+const HERO_ASPECT = 1152 / 1536;
 
 export default function LoginScreen() {
   const login = useAuthStore((s) => s.login);
@@ -44,14 +48,7 @@ export default function LoginScreen() {
   return (
     <View style={styles.flex}>
       <ImageBackground source={heroImage} style={styles.hero} resizeMode="cover">
-        <Scene3DBackground variant="hero" />
-        <View style={styles.titleWrap} pointerEvents="none">
-          <GoldTitle style={styles.title}>ARCANA</GoldTitle>
-        </View>
-        <LinearGradient
-          colors={["transparent", mysticColors.gradientBottom]}
-          style={styles.fade}
-        />
+        <LinearGradient colors={["transparent", colors.background]} style={styles.fade} />
       </ImageBackground>
 
       <KeyboardAvoidingView
@@ -90,22 +87,13 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: mysticColors.gradientBottom },
+  flex: { flex: 1, backgroundColor: colors.background },
   hero: {
-    height: "48%",
+    aspectRatio: HERO_ASPECT,
     justifyContent: "flex-end",
   },
-  titleWrap: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 40,
-  },
-  title: {
-    fontSize: 52,
-  },
   fade: {
-    height: 90,
+    height: 140,
   },
   sheet: {
     flex: 1,
@@ -118,7 +106,7 @@ const styles = StyleSheet.create({
     gap: 24,
   },
   subtitle: {
-    color: mysticColors.textMuted,
+    color: colors.textMuted,
     textAlign: "center",
     fontSize: 15,
   },
@@ -126,14 +114,14 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   error: {
-    color: "#e08585",
+    color: colors.danger,
     fontSize: 14,
   },
   link: {
     alignSelf: "center",
   },
   linkText: {
-    color: mysticColors.textMuted,
+    color: colors.textMuted,
     fontSize: 14,
     textDecorationLine: "underline",
   },

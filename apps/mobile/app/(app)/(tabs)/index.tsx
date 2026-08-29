@@ -45,7 +45,7 @@ export default function CatalogScreen() {
 
   return (
     <View style={styles.screen}>
-      <Scene3DBackground variant="ambient" />
+      <Scene3DBackground coverUrls={stories.map((s) => s.coverImageUrl).filter((u): u is string => !!u)} />
       <GoldTitle style={styles.header}>Истории</GoldTitle>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
