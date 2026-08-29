@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from "react-native";
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
+import { useFonts, Cinzel_600SemiBold, Cinzel_700Bold } from "@expo-google-fonts/cinzel";
 
 import { useAuthStore } from "../lib/auth-store";
 import { colors } from "../lib/theme";
@@ -10,6 +11,7 @@ import { colors } from "../lib/theme";
 export default function RootLayout() {
   const status = useAuthStore((s) => s.status);
   const hydrate = useAuthStore((s) => s.hydrate);
+  const [fontsLoaded] = useFonts({ Cinzel_600SemiBold, Cinzel_700Bold });
 
   useEffect(() => {
     hydrate();
@@ -18,7 +20,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      {status === "loading" ? (
+      {status === "loading" || !fontsLoaded ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background }}>
           <ActivityIndicator color={colors.accent} size="large" />
         </View>

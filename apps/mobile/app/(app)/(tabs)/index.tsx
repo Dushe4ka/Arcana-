@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
+import { GoldTitle } from "../../../components/GoldTitle";
+import { Scene3DBackground } from "../../../components/Scene3DBackground";
 import { StoryCard } from "../../../components/StoryCard";
 import { apiRequest, ApiError } from "../../../lib/api";
 import { colors } from "../../../lib/theme";
@@ -43,7 +45,8 @@ export default function CatalogScreen() {
 
   return (
     <View style={styles.screen}>
-      <Text style={styles.header}>Истории</Text>
+      <Scene3DBackground variant="ambient" />
+      <GoldTitle style={styles.header}>Истории</GoldTitle>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
         data={stories}
@@ -64,7 +67,7 @@ export default function CatalogScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background, paddingTop: 60 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  header: { color: colors.accent, fontSize: 28, fontWeight: "700", paddingHorizontal: 20, marginBottom: 16 },
+  header: { fontSize: 28, paddingHorizontal: 20, marginBottom: 16, textAlign: "left" },
   list: { paddingHorizontal: 20, paddingBottom: 40, gap: 14 },
   error: { color: colors.danger, paddingHorizontal: 20, marginBottom: 10 },
   empty: { color: colors.textMuted, textAlign: "center", marginTop: 40 },
