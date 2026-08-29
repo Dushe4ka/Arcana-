@@ -23,7 +23,6 @@ import { ShimmerLogo } from "../../components/ShimmerLogo";
 import { TextField } from "../../components/TextField";
 import { useAuthStore } from "../../lib/auth-store";
 import { colors } from "../../lib/theme";
-import { useKeyboardVisible } from "../../lib/use-keyboard-visible";
 import { useTiltParallax } from "../../lib/use-tilt-parallax";
 
 // Full uncropped hero photo (1152x1536).
@@ -44,7 +43,6 @@ export default function LoginScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const tilt = useTiltParallax();
-  const keyboardVisible = useKeyboardVisible();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -120,7 +118,7 @@ export default function LoginScreen() {
         style={[styles.heroLayer, overscan(STAR_PARALLAX), parallaxStyle(STAR_PARALLAX)]}
         pointerEvents="none"
       >
-        <Scene3DBackground bookCount={0} starCount={170} avoidCenterX={2.1} starOpacity={0.9} />
+        <Scene3DBackground bookCount={0} starCount={150} avoidCenterX={2.1} />
       </Animated.View>
 
       {/* Long, very gradual fade from the photo into the page background. */}
@@ -164,7 +162,6 @@ export default function LoginScreen() {
               textContentType="emailAddress"
               autoComplete="email"
               returnKeyType="next"
-              translucent={keyboardVisible}
             />
             <View>
               <TextField
@@ -176,7 +173,6 @@ export default function LoginScreen() {
                 autoComplete="current-password"
                 returnKeyType="go"
                 onSubmitEditing={submit}
-                translucent={keyboardVisible}
               />
               <View style={styles.linkRow}>
                 <Pressable
