@@ -10,6 +10,10 @@ type Props = {
   coverUrls?: string[];
   bookCount?: number;
   starCount?: number;
+  /** Half-width (in the -5..5 star field space) of a center column with no
+   * stars - keeps sparkle off a foreground subject's face when the photo
+   * behind this layer has one centered, instead of scattering everywhere. */
+  avoidCenterX?: number;
 };
 
 const STAR_VERTEX = `
@@ -40,7 +44,15 @@ const STAR_FRAGMENT = `
 
 /** Points with a twinkle shader - each star pulses on its own phase, unlike a
  * single opacity value animated on the whole cloud at once. */
-function Starfield({ count, opacity }: { count: number; opacity: number }) {
+function Starfield({
+  count,
+  opacity,
+  avoidCenterX = 0,
+}: {
+  count: number;
+  opacity: number;
+  avoidCenterX?: number;
+}) {
   const materialRef = useRef<THREE.ShaderMaterial>(null);
 
   const [positions, phases, sizes] = useMemo(() => {
@@ -48,14 +60,19 @@ function Starfield({ count, opacity }: { count: number; opacity: number }) {
     const ph = new Float32Array(count);
     const sz = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      pos[i * 3] = (Math.random() - 0.5) * 10;
+      let x = (Math.random() - 0.5) * 10;
+      if (avoidCenterX > 0) {
+        const side = x < 0 ? -1 : 1;
+        x = side * (avoidCenterX + Math.random() * (5 - avoidCenterX));
+      }
+      pos[i * 3] = x;
       pos[i * 3 + 1] = (Math.random() - 0.5) * 10;
       pos[i * 3 + 2] = (Math.random() - 0.5) * 6 - 2;
       ph[i] = Math.random() * Math.PI * 2;
       sz[i] = 3 + Math.random() * 4;
     }
     return [pos, ph, sz];
-  }, [count]);
+  }, [count, avoidCenterX]);
 
   const uniforms = useMemo(
     () => ({
@@ -143,7 +160,12 @@ function FlyingBook({ seed, opacity }: { seed: BookSeed; opacity: number }) {
   );
 }
 
-function Scene({ coverUrls, bookCount, starCount }: Required<Omit<Props, "coverUrls">> & { coverUrls?: string[] }) {
+function Scene({
+  coverUrls,
+  bookCount,
+  starCount,
+  avoidCenterX,
+}: Required<Omit<Props, "coverUrls" | "avoidCenterX">> & Pick<Props, "coverUrls" | "avoidCenterX">) {
   const opacity = 0.6;
   const seeds = useMemo<BookSeed[]>(() => {
     const palette = ["#241f1a", "#3a2a20", "#4a3225", "#2f2820"];
@@ -161,7 +183,7 @@ function Scene({ coverUrls, bookCount, starCount }: Required<Omit<Props, "coverU
     <>
       <ambientLight intensity={0.6} />
       <directionalLight position={[2, 3, 4]} intensity={0.8} color="#f6dfa0" />
-      <Starfield count={starCount} opacity={opacity} />
+      <Starfield count={starCount} opacity={opacity} avoidCenterX={avoidCenterX} />
       {seeds.map((seed, i) => (
         <FlyingBook key={i} seed={seed} opacity={opacity} />
       ))}
@@ -172,11 +194,11 @@ function Scene({ coverUrls, bookCount, starCount }: Required<Omit<Props, "coverU
 /** Fills its parent with an ambient 3D scene of drifting books and a twinkling
  * starfield. Absolutely positioned and non-interactive so it never intercepts
  * touches meant for real UI on top. */
-export function Scene3DBackground({ coverUrls, bookCount = 3, starCount = 90 }: Props) {
+export function Scene3DBackground({ coverUrls, bookCount = 3, starCount = 90, avoidCenterX }: Props) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Canvas camera={{ position: [0, 0, 5], fov: 55 }} gl={{ antialias: false }}>
-        <Scene coverUrls={coverUrls} bookCount={bookCount} starCount={starCount} />
+        <Scene coverUrls={coverUrls} bookCount={bookCount} starCount={starCount} avoidCenterX={avoidCenterX} />
       </Canvas>
     </View>
   );

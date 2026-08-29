@@ -22,12 +22,13 @@ import { TextField } from "../../components/TextField";
 import { useAuthStore } from "../../lib/auth-store";
 import { colors } from "../../lib/theme";
 
-// The hero photo is 1152x1536 (0.75 aspect) - the hero container is sized to
-// match that aspect exactly so resizeMode="cover" never has to crop it.
-const HERO_ASPECT = 1152 / 1536;
-// Fraction down the hero photo where the wordmark sits - roughly waist height
-// on the two figures, below their heads and hands.
-const LOGO_TOP_FRACTION = 0.6;
+// The hero photo is cropped to 1152x980 (hairline to just past the waist) so
+// resizeMode="cover" shows it without cropping and the hero doesn't dominate
+// the whole screen height.
+const HERO_ASPECT = 1152 / 980;
+// Fraction down the hero photo where the wordmark sits - near the bottom,
+// just above where the gradient starts darkening.
+const LOGO_TOP_FRACTION = 0.68;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen() {
@@ -71,13 +72,13 @@ export default function LoginScreen() {
   return (
     <View style={[styles.flex, { paddingTop: insets.top }]}>
       <ImageBackground source={heroImage} style={styles.hero} resizeMode="cover">
-        <Scene3DBackground bookCount={0} starCount={150} />
+        <Scene3DBackground bookCount={0} starCount={150} avoidCenterX={2.1} />
         <View style={[styles.logoWrap, { top: `${LOGO_TOP_FRACTION * 100}%` }]} pointerEvents="none">
           <ShimmerLogo width={screenWidth * 0.78} />
         </View>
         <LinearGradient
           colors={["transparent", colors.background + "80", colors.background + "e6"]}
-          locations={[0, 0.4, 1]}
+          locations={[0, 0.55, 1]}
           style={styles.fade}
         />
       </ImageBackground>
@@ -137,7 +138,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   fade: {
-    height: "45%",
+    height: "30%",
   },
   sheet: {
     flex: 1,
@@ -145,17 +146,17 @@ const styles = StyleSheet.create({
   sheetContent: {
     flexGrow: 1,
     paddingHorizontal: 28,
-    paddingTop: 20,
-    paddingBottom: 40,
-    gap: 24,
+    paddingTop: 14,
+    paddingBottom: 24,
+    gap: 16,
   },
   subtitle: {
     color: colors.textMuted,
     textAlign: "center",
-    fontSize: 15,
+    fontSize: 14,
   },
   form: {
-    gap: 16,
+    gap: 12,
   },
   forgotLink: {
     color: colors.textMuted,
