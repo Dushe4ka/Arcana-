@@ -14,6 +14,10 @@ type Props = {
    * stars - keeps sparkle off a foreground subject's face when the photo
    * behind this layer has one centered, instead of scattering everywhere. */
   avoidCenterX?: number;
+  /** Overrides the shared book/star opacity for stars only - use to make the
+   * starfield read as a bright, volumetric foreground+background effect
+   * rather than a faint backdrop. */
+  starOpacity?: number;
 };
 
 const STAR_VERTEX = `
@@ -67,9 +71,14 @@ function Starfield({
       }
       pos[i * 3] = x;
       pos[i * 3 + 1] = (Math.random() - 0.5) * 10;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 6 - 2;
+      // Wide z spread, some stars nearer the camera than the photo plane and
+      // some further back, so the field reads as volume instead of a flat
+      // sheet of sparkle sitting on top of the image.
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 9 - 1;
       ph[i] = Math.random() * Math.PI * 2;
-      sz[i] = 3 + Math.random() * 4;
+      // Skewed distribution: mostly small background sparkle, occasional
+      // large "foreground" star for a sense of depth.
+      sz[i] = 2 + Math.random() ** 2.2 * 9;
     }
     return [pos, ph, sz];
   }, [count, avoidCenterX]);
@@ -165,7 +174,9 @@ function Scene({
   bookCount,
   starCount,
   avoidCenterX,
-}: Required<Omit<Props, "coverUrls" | "avoidCenterX">> & Pick<Props, "coverUrls" | "avoidCenterX">) {
+  starOpacity,
+}: Required<Omit<Props, "coverUrls" | "avoidCenterX" | "starOpacity">> &
+  Pick<Props, "coverUrls" | "avoidCenterX" | "starOpacity">) {
   const opacity = 0.6;
   const seeds = useMemo<BookSeed[]>(() => {
     const palette = ["#241f1a", "#3a2a20", "#4a3225", "#2f2820"];
@@ -183,7 +194,7 @@ function Scene({
     <>
       <ambientLight intensity={0.6} />
       <directionalLight position={[2, 3, 4]} intensity={0.8} color="#f6dfa0" />
-      <Starfield count={starCount} opacity={opacity} avoidCenterX={avoidCenterX} />
+      <Starfield count={starCount} opacity={starOpacity ?? opacity} avoidCenterX={avoidCenterX} />
       {seeds.map((seed, i) => (
         <FlyingBook key={i} seed={seed} opacity={opacity} />
       ))}
@@ -194,11 +205,23 @@ function Scene({
 /** Fills its parent with an ambient 3D scene of drifting books and a twinkling
  * starfield. Absolutely positioned and non-interactive so it never intercepts
  * touches meant for real UI on top. */
-export function Scene3DBackground({ coverUrls, bookCount = 3, starCount = 90, avoidCenterX }: Props) {
+export function Scene3DBackground({
+  coverUrls,
+  bookCount = 3,
+  starCount = 90,
+  avoidCenterX,
+  starOpacity,
+}: Props) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Canvas camera={{ position: [0, 0, 5], fov: 55 }} gl={{ antialias: false }}>
-        <Scene coverUrls={coverUrls} bookCount={bookCount} starCount={starCount} avoidCenterX={avoidCenterX} />
+        <Scene
+          coverUrls={coverUrls}
+          bookCount={bookCount}
+          starCount={starCount}
+          avoidCenterX={avoidCenterX}
+          starOpacity={starOpacity}
+        />
       </Canvas>
     </View>
   );

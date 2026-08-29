@@ -6,6 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -22,6 +23,7 @@ import { ShimmerLogo } from "../../components/ShimmerLogo";
 import { TextField } from "../../components/TextField";
 import { useAuthStore } from "../../lib/auth-store";
 import { colors } from "../../lib/theme";
+import { useKeyboardVisible } from "../../lib/use-keyboard-visible";
 import { useTiltParallax } from "../../lib/use-tilt-parallax";
 
 // Full uncropped hero photo (1152x1536).
@@ -29,7 +31,8 @@ const HERO_ASPECT = 1152 / 1536;
 // Fraction down the hero where the wordmark sits - waist height on the figures.
 const LOGO_TOP_FRACTION = 0.82;
 // How far each layer drifts with device tilt. The photo moves least (it is
-// "furthest"), the sparkle layer most, which is what reads as depth.
+// "furthest"), the sparkle layer most, which is what reads as depth. Layers
+// are oversized by this much on every edge so drifting never exposes a seam.
 const PHOTO_PARALLAX = 10;
 const STAR_PARALLAX = 26;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -41,6 +44,7 @@ export default function LoginScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const tilt = useTiltParallax();
+  const keyboardVisible = useKeyboardVisible();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -92,15 +96,20 @@ export default function LoginScreen() {
     ],
   });
 
+  // Oversized on every edge by its own parallax depth, so drifting under tilt
+  // never exposes the background color at a seam.
+  const overscan = (depth: number) => ({
+    width: screenWidth + depth * 2,
+    height: heroHeight + depth * 2,
+    marginLeft: -depth,
+    marginTop: -depth,
+  });
+
   return (
     <View style={styles.flex}>
-      {/* Photo layer - slightly oversized so parallax drift never exposes an edge. */}
+      {/* Photo layer. */}
       <Animated.View
-        style={[
-          styles.heroLayer,
-          { height: heroHeight + PHOTO_PARALLAX * 3, marginTop: -PHOTO_PARALLAX },
-          parallaxStyle(PHOTO_PARALLAX),
-        ]}
+        style={[styles.heroLayer, overscan(PHOTO_PARALLAX), parallaxStyle(PHOTO_PARALLAX)]}
         pointerEvents="none"
       >
         <Image source={heroImage} style={styles.heroImage} resizeMode="cover" />
@@ -108,10 +117,10 @@ export default function LoginScreen() {
 
       {/* Sparkle layer - drifts further than the photo, creating depth. */}
       <Animated.View
-        style={[styles.heroLayer, { height: heroHeight }, parallaxStyle(STAR_PARALLAX)]}
+        style={[styles.heroLayer, overscan(STAR_PARALLAX), parallaxStyle(STAR_PARALLAX)]}
         pointerEvents="none"
       >
-        <Scene3DBackground bookCount={0} starCount={150} avoidCenterX={2.1} />
+        <Scene3DBackground bookCount={0} starCount={170} avoidCenterX={2.1} starOpacity={0.9} />
       </Animated.View>
 
       {/* Long, very gradual fade from the photo into the page background. */}
@@ -138,7 +147,10 @@ export default function LoginScreen() {
         style={styles.kav}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={[styles.content, { paddingBottom: insets.bottom + 20 }]}>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
+          keyboardShouldPersistTaps="handled"
+        >
           <Text style={styles.subtitle}>Тайное общество ждёт вашего возвращения</Text>
 
           <View style={styles.form}>
@@ -152,6 +164,7 @@ export default function LoginScreen() {
               textContentType="emailAddress"
               autoComplete="email"
               returnKeyType="next"
+              translucent={keyboardVisible}
             />
             <View>
               <TextField
@@ -163,6 +176,7 @@ export default function LoginScreen() {
                 autoComplete="current-password"
                 returnKeyType="go"
                 onSubmitEditing={submit}
+                translucent={keyboardVisible}
               />
               <View style={styles.linkRow}>
                 <Pressable
@@ -186,7 +200,7 @@ export default function LoginScreen() {
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Button title="Войти" onPress={submit} loading={loading} disabled={!email || !password} />
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
@@ -201,7 +215,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
     left: 0,
-    right: 0,
   },
   heroImage: {
     width: "100%",
@@ -219,7 +232,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "flex-end",
     paddingHorizontal: 28,
     gap: 16,
