@@ -8,27 +8,34 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Link, router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import heroImage from "../../assets/images/login-hero.jpg";
 import { Button } from "../../components/Button";
+import { Scene3DBackground } from "../../components/Scene3DBackground";
+import { ShimmerLogo } from "../../components/ShimmerLogo";
 import { TextField } from "../../components/TextField";
 import { useAuthStore } from "../../lib/auth-store";
 import { colors } from "../../lib/theme";
 
-// The hero photo is 1152x1536 (0.75 aspect) with the ARCANA title baked into
-// its top band - the hero container below is sized close to that aspect so
-// resizeMode="cover" crops from the sides rather than the top, and never
-// clips the title.
+// The hero photo is 1152x1536 (0.75 aspect) - the hero container is sized to
+// match that aspect exactly so resizeMode="cover" never has to crop it.
 const HERO_ASPECT = 1152 / 1536;
+// Fraction down the hero photo where the wordmark sits - roughly waist height
+// on the two figures, below their heads and hands.
+const LOGO_TOP_FRACTION = 0.6;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen() {
   const login = useAuthStore((s) => s.login);
   const error = useAuthStore((s) => s.error);
   const clearError = useAuthStore((s) => s.clearError);
+  const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -62,9 +69,17 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.flex}>
+    <View style={[styles.flex, { paddingTop: insets.top }]}>
       <ImageBackground source={heroImage} style={styles.hero} resizeMode="cover">
-        <LinearGradient colors={["transparent", colors.background]} style={styles.fade} />
+        <Scene3DBackground bookCount={0} starCount={150} />
+        <View style={[styles.logoWrap, { top: `${LOGO_TOP_FRACTION * 100}%` }]} pointerEvents="none">
+          <ShimmerLogo width={screenWidth * 0.78} />
+        </View>
+        <LinearGradient
+          colors={["transparent", colors.background + "80", colors.background + "e6"]}
+          locations={[0, 0.4, 1]}
+          style={styles.fade}
+        />
       </ImageBackground>
 
       <KeyboardAvoidingView
@@ -115,8 +130,14 @@ const styles = StyleSheet.create({
     aspectRatio: HERO_ASPECT,
     justifyContent: "flex-end",
   },
+  logoWrap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
   fade: {
-    height: 140,
+    height: "45%",
   },
   sheet: {
     flex: 1,
