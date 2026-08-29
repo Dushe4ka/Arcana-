@@ -6,11 +6,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#14101c",
+    "backgroundColor": "#1a1613",
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-font",
       "expo-asset"
     ],
     "ios": {
@@ -20,7 +19,7 @@
     "android": {
       "package": "app.arcana.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#14101c"
+        "backgroundColor": "#1a1613"
       },
       "predictiveBackGestureEnabled": false
     },

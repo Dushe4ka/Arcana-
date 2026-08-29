@@ -146,7 +146,7 @@ function FlyingBook({ seed, opacity }: { seed: BookSeed; opacity: number }) {
 function Scene({ coverUrls, bookCount, starCount }: Required<Omit<Props, "coverUrls">> & { coverUrls?: string[] }) {
   const opacity = 0.6;
   const seeds = useMemo<BookSeed[]>(() => {
-    const palette = ["#2a2338", "#3a2a4a", "#4a2f3a", "#241f36"];
+    const palette = ["#241f1a", "#3a2a20", "#4a3225", "#2f2820"];
     return Array.from({ length: bookCount }, (_, i) => ({
       radius: 1.6 + Math.random() * 1.6,
       height: (Math.random() - 0.5) * 2.2,

@@ -3,7 +3,6 @@ import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { Button } from "../../../components/Button";
-import { GoldTitle } from "../../../components/GoldTitle";
 import { Scene3DBackground } from "../../../components/Scene3DBackground";
 import { useAuthStore } from "../../../lib/auth-store";
 import { colors, radius } from "../../../lib/theme";
@@ -57,7 +56,7 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.card}>
-          <GoldTitle style={styles.cardTitle}>Кошелёк</GoldTitle>
+          <Text style={styles.cardTitle}>Кошелёк</Text>
           {loading && !wallet ? (
             <Text style={styles.muted}>Загрузка…</Text>
           ) : wallet ? (
@@ -129,7 +128,7 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 16,
   },
-  cardTitle: { fontSize: 20, textAlign: "left" },
+  cardTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   muted: { color: colors.textMuted },
   walletRow: { flexDirection: "row", justifyContent: "space-between" },
   stat: { alignItems: "center", gap: 4 },

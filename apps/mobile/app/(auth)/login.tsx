@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Alert,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +23,7 @@ import { colors } from "../../lib/theme";
 // resizeMode="cover" crops from the sides rather than the top, and never
 // clips the title.
 const HERO_ASPECT = 1152 / 1536;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen() {
   const login = useAuthStore((s) => s.login);
@@ -30,9 +32,16 @@ export default function LoginScreen() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const emailError = emailTouched && email && !EMAIL_PATTERN.test(email.trim())
+    ? "Похоже, email введён неверно"
+    : undefined;
+
   const submit = async () => {
+    setEmailTouched(true);
+    if (!EMAIL_PATTERN.test(email.trim())) return;
     clearError();
     setLoading(true);
     try {
@@ -43,6 +52,13 @@ export default function LoginScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const onForgotPassword = () => {
+    Alert.alert(
+      "Восстановление пароля",
+      "Самостоятельное восстановление пока не готово. Напишите в поддержку — support@arcana.app.",
+    );
   };
 
   return (
@@ -63,16 +79,23 @@ export default function LoginScreen() {
               label="Email"
               value={email}
               onChangeText={setEmail}
+              onBlur={() => setEmailTouched(true)}
+              error={emailError}
               keyboardType="email-address"
               textContentType="emailAddress"
             />
-            <TextField
-              label="Пароль"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              textContentType="password"
-            />
+            <View>
+              <TextField
+                label="Пароль"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                textContentType="password"
+              />
+              <Text onPress={onForgotPassword} style={styles.forgotLink}>
+                Забыли пароль?
+              </Text>
+            </View>
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Button title="Войти" onPress={submit} loading={loading} disabled={!email || !password} />
           </View>
@@ -112,6 +135,13 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 16,
+  },
+  forgotLink: {
+    color: colors.textMuted,
+    fontSize: 13,
+    textAlign: "right",
+    marginTop: 6,
+    textDecorationLine: "underline",
   },
   error: {
     color: colors.danger,

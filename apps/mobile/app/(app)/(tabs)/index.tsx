@@ -2,12 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
-import { GoldTitle } from "../../../components/GoldTitle";
 import { Scene3DBackground } from "../../../components/Scene3DBackground";
 import { StoryCard } from "../../../components/StoryCard";
 import { apiRequest, ApiError } from "../../../lib/api";
-import { colors } from "../../../lib/theme";
+import { colors, radius } from "../../../lib/theme";
 import type { StorySummary } from "../../../lib/types";
+
+// Below this count the list reads as broken (a lot of empty space under one
+// card) rather than intentionally short, so a filler card explains it instead.
+const SPARSE_THRESHOLD = 3;
 
 export default function CatalogScreen() {
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -46,7 +49,7 @@ export default function CatalogScreen() {
   return (
     <View style={styles.screen}>
       <Scene3DBackground coverUrls={stories.map((s) => s.coverImageUrl).filter((u): u is string => !!u)} />
-      <GoldTitle style={styles.header}>Истории</GoldTitle>
+      <Text style={styles.header}>Истории</Text>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <FlatList
         data={stories}
@@ -59,6 +62,14 @@ export default function CatalogScreen() {
         ListEmptyComponent={
           !error ? <Text style={styles.empty}>Пока нет опубликованных историй</Text> : null
         }
+        ListFooterComponent={
+          stories.length > 0 && stories.length < SPARSE_THRESHOLD ? (
+            <View style={styles.comingSoon}>
+              <Text style={styles.comingSoonTitle}>Скоро здесь появятся новые истории</Text>
+              <Text style={styles.comingSoonHint}>Заглядывайте почаще — библиотека пополняется</Text>
+            </View>
+          ) : null
+        }
       />
     </View>
   );
@@ -67,8 +78,20 @@ export default function CatalogScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background, paddingTop: 60 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  header: { fontSize: 28, paddingHorizontal: 20, marginBottom: 16, textAlign: "left" },
+  header: { color: colors.text, fontSize: 24, fontWeight: "700", paddingHorizontal: 20, marginBottom: 16 },
   list: { paddingHorizontal: 20, paddingBottom: 40, gap: 14 },
   error: { color: colors.danger, paddingHorizontal: 20, marginBottom: 10 },
   empty: { color: colors.textMuted, textAlign: "center", marginTop: 40 },
+  comingSoon: {
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: 20,
+    marginTop: 4,
+    alignItems: "center",
+    gap: 4,
+  },
+  comingSoonTitle: { color: colors.textMuted, fontSize: 14, fontWeight: "600", textAlign: "center" },
+  comingSoonHint: { color: colors.textMuted, fontSize: 12, textAlign: "center", opacity: 0.8 },
 });
