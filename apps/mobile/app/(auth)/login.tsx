@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -30,8 +29,7 @@ const HERO_ASPECT = 1152 / 1536;
 // Fraction down the hero where the wordmark sits - waist height on the figures.
 const LOGO_TOP_FRACTION = 0.82;
 // How far each layer drifts with device tilt. The photo moves least (it is
-// "furthest"), the sparkle layer most, which is what reads as depth. Layers
-// are oversized by this much on every edge so drifting never exposes a seam.
+// "furthest"), the sparkle layer most, which is what reads as depth.
 const PHOTO_PARALLAX = 10;
 const STAR_PARALLAX = 26;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -94,20 +92,15 @@ export default function LoginScreen() {
     ],
   });
 
-  // Oversized on every edge by its own parallax depth, so drifting under tilt
-  // never exposes the background color at a seam.
-  const overscan = (depth: number) => ({
-    width: screenWidth + depth * 2,
-    height: heroHeight + depth * 2,
-    marginLeft: -depth,
-    marginTop: -depth,
-  });
-
   return (
     <View style={styles.flex}>
-      {/* Photo layer. */}
+      {/* Photo layer - slightly oversized so parallax drift never exposes an edge. */}
       <Animated.View
-        style={[styles.heroLayer, overscan(PHOTO_PARALLAX), parallaxStyle(PHOTO_PARALLAX)]}
+        style={[
+          styles.heroLayer,
+          { height: heroHeight + PHOTO_PARALLAX * 3, marginTop: -PHOTO_PARALLAX },
+          parallaxStyle(PHOTO_PARALLAX),
+        ]}
         pointerEvents="none"
       >
         <Image source={heroImage} style={styles.heroImage} resizeMode="cover" />
@@ -115,7 +108,7 @@ export default function LoginScreen() {
 
       {/* Sparkle layer - drifts further than the photo, creating depth. */}
       <Animated.View
-        style={[styles.heroLayer, overscan(STAR_PARALLAX), parallaxStyle(STAR_PARALLAX)]}
+        style={[styles.heroLayer, { height: heroHeight }, parallaxStyle(STAR_PARALLAX)]}
         pointerEvents="none"
       >
         <Scene3DBackground bookCount={0} starCount={150} avoidCenterX={2.1} />
@@ -145,10 +138,7 @@ export default function LoginScreen() {
         style={styles.kav}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
-          keyboardShouldPersistTaps="handled"
-        >
+        <View style={[styles.content, { paddingBottom: insets.bottom + 20 }]}>
           <Text style={styles.subtitle}>Тайное общество ждёт вашего возвращения</Text>
 
           <View style={styles.form}>
@@ -196,7 +186,7 @@ export default function LoginScreen() {
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Button title="Войти" onPress={submit} loading={loading} disabled={!email || !password} />
           </View>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -211,6 +201,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
     left: 0,
+    right: 0,
   },
   heroImage: {
     width: "100%",
@@ -228,7 +219,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   content: {
-    flexGrow: 1,
+    flex: 1,
     justifyContent: "flex-end",
     paddingHorizontal: 28,
     gap: 16,
