@@ -1,16 +1,17 @@
 import { useState } from "react";
 import {
   Alert,
-  ImageBackground,
+  Animated,
+  Image,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  Pressable,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,14 +22,16 @@ import { ShimmerLogo } from "../../components/ShimmerLogo";
 import { TextField } from "../../components/TextField";
 import { useAuthStore } from "../../lib/auth-store";
 import { colors } from "../../lib/theme";
+import { useTiltParallax } from "../../lib/use-tilt-parallax";
 
-// The hero photo is cropped to 1152x980 (hairline to just past the waist) so
-// resizeMode="cover" shows it without cropping and the hero doesn't dominate
-// the whole screen height.
-const HERO_ASPECT = 1152 / 980;
-// Fraction down the hero photo where the wordmark sits - near the bottom,
-// just above where the gradient starts darkening.
-const LOGO_TOP_FRACTION = 0.68;
+// Full uncropped hero photo (1152x1536).
+const HERO_ASPECT = 1152 / 1536;
+// Fraction down the hero where the wordmark sits - waist height on the figures.
+const LOGO_TOP_FRACTION = 0.82;
+// How far each layer drifts with device tilt. The photo moves least (it is
+// "furthest"), the sparkle layer most, which is what reads as depth.
+const PHOTO_PARALLAX = 10;
+const STAR_PARALLAX = 26;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen() {
@@ -37,11 +40,14 @@ export default function LoginScreen() {
   const clearError = useAuthStore((s) => s.clearError);
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const tilt = useTiltParallax();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const heroHeight = screenWidth / HERO_ASPECT;
 
   const emailError = emailTouched && email && !EMAIL_PATTERN.test(email.trim())
     ? "Похоже, email введён неверно"
@@ -69,25 +75,70 @@ export default function LoginScreen() {
     );
   };
 
+  const parallaxStyle = (depth: number) => ({
+    transform: [
+      {
+        translateX: tilt.x.interpolate({
+          inputRange: [-1, 1],
+          outputRange: [depth, -depth],
+        }),
+      },
+      {
+        translateY: tilt.y.interpolate({
+          inputRange: [-1, 1],
+          outputRange: [depth * 0.6, -depth * 0.6],
+        }),
+      },
+    ],
+  });
+
   return (
-    <View style={[styles.flex, { paddingTop: insets.top }]}>
-      <ImageBackground source={heroImage} style={styles.hero} resizeMode="cover">
+    <View style={styles.flex}>
+      {/* Photo layer - slightly oversized so parallax drift never exposes an edge. */}
+      <Animated.View
+        style={[
+          styles.heroLayer,
+          { height: heroHeight + PHOTO_PARALLAX * 3, marginTop: -PHOTO_PARALLAX },
+          parallaxStyle(PHOTO_PARALLAX),
+        ]}
+        pointerEvents="none"
+      >
+        <Image source={heroImage} style={styles.heroImage} resizeMode="cover" />
+      </Animated.View>
+
+      {/* Sparkle layer - drifts further than the photo, creating depth. */}
+      <Animated.View
+        style={[styles.heroLayer, { height: heroHeight }, parallaxStyle(STAR_PARALLAX)]}
+        pointerEvents="none"
+      >
         <Scene3DBackground bookCount={0} starCount={150} avoidCenterX={2.1} />
-        <View style={[styles.logoWrap, { top: `${LOGO_TOP_FRACTION * 100}%` }]} pointerEvents="none">
-          <ShimmerLogo width={screenWidth * 0.78} />
-        </View>
-        <LinearGradient
-          colors={["transparent", colors.background + "80", colors.background + "e6"]}
-          locations={[0, 0.55, 1]}
-          style={styles.fade}
-        />
-      </ImageBackground>
+      </Animated.View>
+
+      {/* Long, very gradual fade from the photo into the page background. */}
+      <LinearGradient
+        colors={[
+          "transparent",
+          colors.background + "12",
+          colors.background + "38",
+          colors.background + "70",
+          colors.background + "a8",
+          colors.background + "d8",
+          colors.background,
+        ]}
+        locations={[0, 0.2, 0.36, 0.52, 0.68, 0.84, 1]}
+        style={[styles.fade, { top: heroHeight * 0.42, height: heroHeight * 0.72 }]}
+        pointerEvents="none"
+      />
+
+      <View style={[styles.logoWrap, { top: insets.top + heroHeight * LOGO_TOP_FRACTION }]} pointerEvents="none">
+        <ShimmerLogo width={screenWidth * 0.78} />
+      </View>
 
       <KeyboardAvoidingView
-        style={styles.sheet}
+        style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+        <View style={[styles.content, { paddingBottom: insets.bottom + 20 }]}>
           <Text style={styles.subtitle}>Тайное общество ждёт вашего возвращения</Text>
 
           <View style={styles.form}>
@@ -99,6 +150,8 @@ export default function LoginScreen() {
               error={emailError}
               keyboardType="email-address"
               textContentType="emailAddress"
+              autoComplete="email"
+              returnKeyType="next"
             />
             <View>
               <TextField
@@ -107,19 +160,23 @@ export default function LoginScreen() {
                 onChangeText={setPassword}
                 secureTextEntry
                 textContentType="password"
+                autoComplete="current-password"
+                returnKeyType="go"
+                onSubmitEditing={submit}
               />
-              <Text onPress={onForgotPassword} style={styles.forgotLink}>
-                Забыли пароль?
-              </Text>
+              <Pressable
+                onPress={onForgotPassword}
+                style={styles.forgotHit}
+                accessibilityRole="button"
+                accessibilityLabel="Забыли пароль?"
+              >
+                <Text style={styles.forgotLink}>Забыли пароль?</Text>
+              </Pressable>
             </View>
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Button title="Войти" onPress={submit} loading={loading} disabled={!email || !password} />
           </View>
-
-          <Link href="/(auth)/register" style={styles.link}>
-            <Text style={styles.linkText}>Ещё нет приглашения? Создать аккаунт</Text>
-          </Link>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -127,9 +184,20 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
-  hero: {
-    aspectRatio: HERO_ASPECT,
-    justifyContent: "flex-end",
+  heroLayer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  heroImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
   },
   logoWrap: {
     position: "absolute",
@@ -137,17 +205,10 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: "center",
   },
-  fade: {
-    height: "30%",
-  },
-  sheet: {
+  content: {
     flex: 1,
-  },
-  sheetContent: {
-    flexGrow: 1,
+    justifyContent: "flex-end",
     paddingHorizontal: 28,
-    paddingTop: 14,
-    paddingBottom: 24,
     gap: 16,
   },
   subtitle: {
@@ -158,23 +219,19 @@ const styles = StyleSheet.create({
   form: {
     gap: 12,
   },
+  forgotHit: {
+    alignSelf: "flex-end",
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
   forgotLink: {
     color: colors.textMuted,
     fontSize: 13,
-    textAlign: "right",
-    marginTop: 6,
     textDecorationLine: "underline",
   },
   error: {
     color: colors.danger,
     fontSize: 14,
-  },
-  link: {
-    alignSelf: "center",
-  },
-  linkText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    textDecorationLine: "underline",
   },
 });

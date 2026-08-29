@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { Animated, Easing, Image, StyleSheet, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { AccessibilityInfo, Animated, Easing, Image, StyleSheet, View } from "react-native";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { LinearGradient } from "expo-linear-gradient";
 
@@ -19,8 +19,16 @@ export function ShimmerLogo({ width }: Props) {
   const height = width / LOGO_ASPECT;
   const sweepWidth = width * 0.55;
   const progress = useRef(new Animated.Value(0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
+    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (reduceMotion) return;
     const loop = Animated.loop(
       Animated.timing(progress, {
         toValue: 1,
@@ -31,7 +39,7 @@ export function ShimmerLogo({ width }: Props) {
     );
     loop.start();
     return () => loop.stop();
-  }, [progress]);
+  }, [progress, reduceMotion]);
 
   const translateX = progress.interpolate({
     inputRange: [0, 1],
@@ -39,7 +47,7 @@ export function ShimmerLogo({ width }: Props) {
   });
 
   return (
-    <View style={{ width, height }}>
+    <View style={{ width, height }} accessible accessibilityRole="image" accessibilityLabel="ARCANA">
       <MaskedView
         style={{ width, height }}
         maskElement={<Image source={logo} style={{ width, height }} resizeMode="contain" />}

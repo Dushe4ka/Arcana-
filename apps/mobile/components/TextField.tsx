@@ -28,7 +28,8 @@ export function TextField({ label, error, style, secureTextEntry, ...rest }: Pro
           <Pressable
             onPress={() => setReveal((v) => !v)}
             style={styles.icon}
-            hitSlop={10}
+            hitSlop={12}
+            accessibilityRole="button"
             accessibilityLabel={reveal ? "Скрыть пароль" : "Показать пароль"}
           >
             <Ionicons name={reveal ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textMuted} />
