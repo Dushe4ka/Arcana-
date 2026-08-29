@@ -135,7 +135,7 @@ export default function LoginScreen() {
       </View>
 
       <KeyboardAvoidingView
-        style={styles.flex}
+        style={styles.kav}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <View style={[styles.content, { paddingBottom: insets.bottom + 20 }]}>
@@ -164,14 +164,24 @@ export default function LoginScreen() {
                 returnKeyType="go"
                 onSubmitEditing={submit}
               />
-              <Pressable
-                onPress={onForgotPassword}
-                style={styles.forgotHit}
-                accessibilityRole="button"
-                accessibilityLabel="Забыли пароль?"
-              >
-                <Text style={styles.forgotLink}>Забыли пароль?</Text>
-              </Pressable>
+              <View style={styles.linkRow}>
+                <Pressable
+                  onPress={() => router.push("/(auth)/register")}
+                  style={styles.linkHit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Создать аккаунт"
+                >
+                  <Text style={styles.linkText}>Создать аккаунт</Text>
+                </Pressable>
+                <Pressable
+                  onPress={onForgotPassword}
+                  style={styles.linkHit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Забыли пароль?"
+                >
+                  <Text style={styles.linkText}>Забыли пароль?</Text>
+                </Pressable>
+              </View>
             </View>
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <Button title="Войти" onPress={submit} loading={loading} disabled={!email || !password} />
@@ -184,6 +194,9 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
+  // Transparent: this sits above the absolutely-positioned photo layers, so an
+  // opaque background here would paint over them.
+  kav: { flex: 1 },
   heroLayer: {
     position: "absolute",
     top: 0,
@@ -219,13 +232,17 @@ const styles = StyleSheet.create({
   form: {
     gap: 12,
   },
-  forgotHit: {
-    alignSelf: "flex-end",
+  linkRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  linkHit: {
     minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: 4,
   },
-  forgotLink: {
+  linkText: {
     color: colors.textMuted,
     fontSize: 13,
     textDecorationLine: "underline",
