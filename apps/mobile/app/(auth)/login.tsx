@@ -130,7 +130,7 @@ export default function LoginScreen() {
         pointerEvents="none"
       />
 
-      <View style={[styles.logoWrap, { top: insets.top + heroHeight * LOGO_TOP_FRACTION }]} pointerEvents="none">
+      <View style={[styles.logoWrap, { top: insets.top + heroHeight * LOGO_TOP_FRACTION - 14 }]} pointerEvents="none">
         <ShimmerLogo width={screenWidth * 0.78} />
       </View>
 
