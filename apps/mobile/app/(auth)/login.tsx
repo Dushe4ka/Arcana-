@@ -33,6 +33,9 @@ const LOGO_TOP_FRACTION = 0.82;
 const PHOTO_PARALLAX = 10;
 const STAR_PARALLAX = 26;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// DIAGNOSTIC: set true to test whether Scene3DBackground (expo-gl/three.js) is
+// the cause of the blank-screen crash in Expo Go. Remove once root-caused.
+const DIAGNOSTIC_DISABLE_3D_SCENE = true;
 
 export default function LoginScreen() {
   const login = useAuthStore((s) => s.login);
@@ -106,13 +109,17 @@ export default function LoginScreen() {
         <Image source={heroImage} style={styles.heroImage} resizeMode="cover" />
       </Animated.View>
 
-      {/* Sparkle layer - drifts further than the photo, creating depth. */}
-      <Animated.View
-        style={[styles.heroLayer, { height: heroHeight }, parallaxStyle(STAR_PARALLAX)]}
-        pointerEvents="none"
-      >
-        <Scene3DBackground bookCount={0} starCount={150} avoidCenterX={2.1} />
-      </Animated.View>
+      {/* Sparkle layer - drifts further than the photo, creating depth.
+          DIAGNOSTIC: temporarily disabled to test whether the expo-gl/three.js
+          scene is the cause of the blank-screen crash in Expo Go. */}
+      {DIAGNOSTIC_DISABLE_3D_SCENE ? null : (
+        <Animated.View
+          style={[styles.heroLayer, { height: heroHeight }, parallaxStyle(STAR_PARALLAX)]}
+          pointerEvents="none"
+        >
+          <Scene3DBackground bookCount={0} starCount={150} avoidCenterX={2.1} />
+        </Animated.View>
+      )}
 
       {/* Long, very gradual fade from the photo into the page background. */}
       <LinearGradient
