@@ -1,6 +1,7 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { Canvas, useFrame, useLoader } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Asset } from "expo-asset";
 import * as THREE from "three";
 
 type Props = {
@@ -127,8 +128,31 @@ type BookSeed = {
   coverUrl?: string;
 };
 
+// three's own TextureLoader shells out to the browser `document` API, which
+// doesn't exist in React Native - load the image via expo-asset instead and
+// hand three a plain Texture, matching what expo-gl's texImage2D shim accepts.
 function CoverFace({ url }: { url: string }) {
-  const texture = useLoader(THREE.TextureLoader, url);
+  const [texture, setTexture] = useState<THREE.Texture | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTexture(null);
+    Asset.fromURI(url)
+      .downloadAsync()
+      .then((asset) => {
+        if (cancelled) return;
+        const tex = new THREE.Texture(asset as unknown as HTMLImageElement);
+        tex.needsUpdate = true;
+        setTexture(tex);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  if (!texture) return null;
+
   return (
     <mesh position={[0, 0, 0.056]}>
       <planeGeometry args={[0.38, 0.54]} />
