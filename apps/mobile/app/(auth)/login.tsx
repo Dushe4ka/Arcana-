@@ -3,8 +3,6 @@ import {
   Alert,
   Animated,
   Image,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,7 +21,7 @@ import { ShimmerLogo } from "../../components/ShimmerLogo";
 import { TextField } from "../../components/TextField";
 import { useAuthStore } from "../../lib/auth-store";
 import { colors } from "../../lib/theme";
-import { useKeyboardVisible } from "../../lib/use-keyboard-visible";
+import { useKeyboardPadding, useKeyboardVisible } from "../../lib/use-keyboard-visible";
 import { useTiltParallax } from "../../lib/use-tilt-parallax";
 
 // Full uncropped hero photo (1152x1536).
@@ -45,6 +43,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const tilt = useTiltParallax();
   const keyboardVisible = useKeyboardVisible();
+  const keyboardPadding = useKeyboardPadding();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -125,16 +124,41 @@ export default function LoginScreen() {
 
       {/* Long, very gradual fade from the photo into the page background. */}
       <LinearGradient
+        // Fine-grained smootherstep ramp (25 stops) instead of a handful of
+        // large jumps - the eye reads even a "smooth" 15-20% opacity jump
+        // between two stops as a hard edge once it lands over a small
+        // vertical span, which is exactly what happened around the logo.
         colors={[
           "transparent",
-          colors.background + "12",
-          colors.background + "38",
-          colors.background + "70",
-          colors.background + "a8",
+          colors.background + "00",
+          colors.background + "01",
+          colors.background + "04",
+          colors.background + "09",
+          colors.background + "10",
+          colors.background + "1a",
+          colors.background + "27",
+          colors.background + "36",
+          colors.background + "46",
+          colors.background + "58",
+          colors.background + "6c",
+          colors.background + "80",
+          colors.background + "93",
+          colors.background + "a7",
+          colors.background + "b9",
+          colors.background + "c9",
           colors.background + "d8",
+          colors.background + "e5",
+          colors.background + "ef",
+          colors.background + "f6",
+          colors.background + "fb",
+          colors.background + "fe",
+          colors.background,
           colors.background,
         ]}
-        locations={[0, 0.2, 0.36, 0.52, 0.68, 0.84, 1]}
+        locations={[
+          0, 0.042, 0.083, 0.125, 0.167, 0.208, 0.25, 0.292, 0.333, 0.375, 0.417, 0.458, 0.5,
+          0.542, 0.583, 0.625, 0.667, 0.708, 0.75, 0.792, 0.833, 0.875, 0.917, 0.958, 1,
+        ]}
         style={[styles.fade, { top: heroHeight * 0.42, height: heroHeight * 0.72 }]}
         pointerEvents="none"
       />
@@ -143,10 +167,7 @@ export default function LoginScreen() {
         <ShimmerLogo width={screenWidth * 0.78} />
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.kav}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <Animated.View style={[styles.kav, { paddingBottom: keyboardPadding }]}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
           keyboardShouldPersistTaps="handled"
@@ -201,7 +222,7 @@ export default function LoginScreen() {
             <Button title="Войти" onPress={submit} loading={loading} disabled={!email || !password} />
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </Animated.View>
     </View>
   );
 }

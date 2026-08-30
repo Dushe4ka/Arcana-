@@ -15,11 +15,11 @@ type Props = TextInputProps & {
 
 export function TextField({ label, error, style, secureTextEntry, translucent, ...rest }: Props) {
   const [reveal, setReveal] = useState(false);
-  const bgOpacity = useRef(new Animated.Value(translucent ? 0.4 : 1)).current;
+  const bgOpacity = useRef(new Animated.Value(translucent ? 0.6 : 1)).current;
 
   useEffect(() => {
     Animated.timing(bgOpacity, {
-      toValue: translucent ? 0.4 : 1,
+      toValue: translucent ? 0.6 : 1,
       duration: 200,
       useNativeDriver: true,
     }).start();
