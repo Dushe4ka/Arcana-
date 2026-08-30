@@ -15,6 +15,15 @@ export const colors = {
   danger: "#e08585",
   soft: "#7fc9c0",
   hard: "#d4af6a",
+  /** Dusty rose used only for the home screen's "Читать" CTA and carousel
+   * accents, sampled from the reference mock - kept out of the shared accent
+   * so other screens' primary buttons stay gold. */
+  rose: "#c2938f",
+  roseMuted: "#8a655f",
+  /** Soft violet used only for level/XP on the home header, sampled from the
+   * user's reference screenshot - explicitly brought back for this one spot
+   * by request, everything else stays on the gold accent. */
+  level: "#a78bda",
 };
 
 export const radius = {
@@ -22,3 +31,8 @@ export const radius = {
   md: 14,
   lg: 22,
 };
+
+/** Warm rose-brown vignette sampled from the user's bookcase reference photo -
+ * scoped to the home screen background only (not `colors.background`, which
+ * stays the near-black tone every other screen uses). */
+export const homeGradient = ["#241a15", "#6f5348", "#9c7768", "#6a4d3f", "#201712"] as const;

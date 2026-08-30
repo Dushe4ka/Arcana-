@@ -17,7 +17,11 @@ export default function AppLayout() {
         contentStyle: { backgroundColor: colors.background },
       }}
     >
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      {/* gestureEnabled: false - (tabs) is the root screen after login, so an
+          edge swipe here was showing iOS's interactive-pop "peek" (a dark
+          rounded card with a back chevron) with nothing real behind it to
+          go back to. */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="story/[id]" options={{ title: "" }} />
     </Stack>
   );

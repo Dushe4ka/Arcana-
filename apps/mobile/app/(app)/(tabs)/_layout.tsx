@@ -14,7 +14,10 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border },
+        // Bottom nav removed for now (see HomeHeader's avatar, which routes to
+        // Profile) - the extra tabs the reference mock shows (Библиотека,
+        // Поиск, Клуб) don't have screens behind them yet.
+        tabBarStyle: { display: "none" },
       }}
     >
       <Tabs.Screen

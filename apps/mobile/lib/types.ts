@@ -1,4 +1,6 @@
-import type { LocalizedText } from "@arcana/shared";
+import type { LocalizedText, StoryGenre } from "@arcana/shared";
+
+export type { StoryGenre };
 
 /** View-model types returned by the API. These mirror apps/api/app/schemas/responses.py
  * and the play-engine views built in apps/api/app/services/play_service.py - the backend
@@ -7,6 +9,7 @@ import type { LocalizedText } from "@arcana/shared";
 export type PublicUser = {
   id: string;
   email: string;
+  displayName: string;
   role: "PLAYER" | "WRITER" | "EDITOR" | "ADMIN";
 };
 
@@ -26,6 +29,8 @@ export type StorySummary = {
   description: LocalizedText | null;
   coverImageUrl: string | null;
   status: string;
+  genre: StoryGenre;
+  createdAt: string;
 };
 
 export type ChapterSummary = {
@@ -80,6 +85,12 @@ export type Wallet = {
   hard: number;
   energy: number;
   energyUpdatedAt: string;
+  xp: number;
+  // Derived server-side from xp (apps/api/app/models/economy.py: compute_level) - never
+  // sent as raw xp thresholds, always as ready-to-render progress.
+  level: number;
+  xpIntoLevel: number;
+  xpForNextLevel: number;
   updatedAt: string;
 };
 
