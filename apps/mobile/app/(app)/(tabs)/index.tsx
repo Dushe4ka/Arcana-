@@ -17,12 +17,14 @@ import { STORY_GENRES, type StoryGenre } from "@arcana/shared";
 
 import { ContinueSection } from "../../../components/ContinueSection";
 import { GenreTabs } from "../../../components/GenreTabs";
+import { GlassSurface } from "../../../components/GlassSurface";
 import { HomeBackground } from "../../../components/HomeBackground";
 import { HomeHeader } from "../../../components/HomeHeader";
 import { LibraryShelf } from "../../../components/LibraryShelf";
 import { apiRequest, ApiError } from "../../../lib/api";
 import { useAuthStore } from "../../../lib/auth-store";
-import { colors, homeGradient } from "../../../lib/theme";
+import { useFavoritesStore } from "../../../lib/favorites-store";
+import { colors, homeGradient, radius } from "../../../lib/theme";
 import { useWalletStore } from "../../../lib/wallet-store";
 import type { SaveSlotListItem, StorySummary } from "../../../lib/types";
 
@@ -38,6 +40,8 @@ export default function CatalogScreen() {
   const user = useAuthStore((s) => s.user);
   const wallet = useWalletStore((s) => s.wallet);
   const fetchWallet = useWalletStore((s) => s.fetch);
+  const favoriteIds = useFavoritesStore((s) => s.ids);
+  const hydrateFavorites = useFavoritesStore((s) => s.hydrate);
 
   const [stories, setStories] = useState<StorySummary[]>([]);
   const [continueSlots, setContinueSlots] = useState<SaveSlotListItem[]>([]);
@@ -70,8 +74,9 @@ export default function CatalogScreen() {
 
   useEffect(() => {
     fetchWallet();
+    hydrateFavorites();
     load().finally(() => setLoading(false));
-  }, [fetchWallet, load]);
+  }, [fetchWallet, hydrateFavorites, load]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -96,6 +101,24 @@ export default function CatalogScreen() {
     for (const slot of continueSlots) map[slot.storyId] = slot;
     return map;
   }, [continueSlots]);
+
+  // Most-recently-played first - continueSlots itself has no guaranteed
+  // order, and "continue reading" should lead with whichever book you were
+  // just in, not whatever order the catalog happens to return.
+  const continueStories = useMemo(() => {
+    const byId = new Map(stories.map((story) => [story.id, story]));
+    return [...continueSlots]
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .map((slot) => byId.get(slot.storyId))
+      .filter((story): story is StorySummary => story !== undefined);
+  }, [continueSlots, stories]);
+
+  // Ordered by favoriteIds (most recently favorited first, per the store),
+  // not by filtering `stories` in catalog order.
+  const favoriteStories = useMemo(() => {
+    const byId = new Map(stories.map((story) => [story.id, story]));
+    return favoriteIds.map((id) => byId.get(id)).filter((story): story is StorySummary => story !== undefined);
+  }, [stories, favoriteIds]);
 
   const openStory = (story: StorySummary) => router.push(`/(app)/story/${story.id}`);
   // A story already in progress resumes its save slot; otherwise the
@@ -178,6 +201,19 @@ export default function CatalogScreen() {
             shelvesTop.current = e.nativeEvent.layout.y;
           }}
         >
+          <LibraryShelf
+            label="Продолжить чтение"
+            stories={continueStories}
+            onPressStory={openStory}
+            showBadge={false}
+          />
+          <LibraryShelf
+            label="Избранное"
+            stories={favoriteStories}
+            onPressStory={openStory}
+            showBadge={false}
+          />
+
           {STORY_GENRES.map((genre) => (
             <View key={genre} onLayout={onShelfLayout(genre)}>
               <LibraryShelf label={GENRE_LABELS[genre]} stories={byGenre[genre]} onPressStory={openStory} />
@@ -188,6 +224,32 @@ export default function CatalogScreen() {
         {stories.length === 0 && !error ? (
           <Text style={styles.empty}>Пока нет опубликованных историй</Text>
         ) : null}
+
+        <View style={styles.libraryHeading}>
+          <View style={styles.libraryTitleRow}>
+            <Text style={styles.libraryTitle}>Кинозал</Text>
+            <Pressable
+              hitSlop={8}
+              onPress={() => Alert.alert("Кинозал", "Мини-сериалы пока готовятся. Загляните позже.")}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
+            </Pressable>
+          </View>
+          <Pressable
+            hitSlop={6}
+            onPress={() => Alert.alert("Кинозал", "Мини-сериалы пока готовятся. Загляните позже.")}
+          >
+            <View style={styles.showAll}>
+              <Text style={styles.showAllText}>Показать все</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </View>
+          </Pressable>
+        </View>
+
+        <GlassSurface style={styles.cinemaComingSoon} intensity={25}>
+          <Ionicons name="film-outline" size={22} color={colors.accentMuted} />
+          <Text style={styles.cinemaComingSoonText}>Скоро здесь появятся мини-сериалы</Text>
+        </GlassSurface>
       </ScrollView>
     </View>
   );
@@ -210,4 +272,13 @@ const styles = StyleSheet.create({
   showAllText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
   shelves: { gap: 32 },
   empty: { color: colors.textMuted, textAlign: "center", marginTop: 20 },
+  cinemaComingSoon: {
+    marginHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: radius.lg,
+    padding: 18,
+  },
+  cinemaComingSoonText: { color: colors.textMuted, fontSize: 13, flex: 1 },
 });

@@ -22,7 +22,9 @@ export default function AppLayout() {
           rounded card with a back chevron) with nothing real behind it to
           go back to. */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="story/[id]" options={{ title: "" }} />
+      {/* headerShown: false - the redesigned screen has its own full-bleed
+          cover-photo hero and a translucent custom back button. */}
+      <Stack.Screen name="story/[id]" options={{ headerShown: false }} />
     </Stack>
   );
 }

@@ -1,24 +1,30 @@
-import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { GlassSurface } from "./GlassSurface";
+import { useFavoritesStore } from "../lib/favorites-store";
 import { colors, radius } from "../lib/theme";
 
 const COVER_ASPECT = 2 / 3;
 
 export function ShelfBookCard({
+  storyId,
   title,
   coverImageUrl,
   isNew = false,
   width = 104,
   onPress,
 }: {
+  storyId: string;
   title: string;
   coverImageUrl: string | null;
   isNew?: boolean;
   width?: number;
   onPress: () => void;
 }) {
+  const isFavorite = useFavoritesStore((s) => s.ids.includes(storyId));
+  const toggleFavorite = useFavoritesStore((s) => s.toggle);
+
   return (
     <Pressable
       onPress={onPress}
@@ -40,10 +46,14 @@ export function ShelfBookCard({
         <Pressable
           hitSlop={8}
           style={({ pressed: favPressed }) => [styles.favoriteWrap, favPressed && styles.favoritePressed]}
-          onPress={() => Alert.alert("Избранное", "Список избранного пока не готов. Загляните позже.")}
+          onPress={() => toggleFavorite(storyId)}
         >
           <GlassSurface style={styles.favorite} intensity={40}>
-            <Ionicons name="star-outline" size={14} color={colors.text} />
+            <Ionicons
+              name={isFavorite ? "star" : "star-outline"}
+              size={14}
+              color={isFavorite ? colors.accent : colors.text}
+            />
           </GlassSurface>
         </Pressable>
       </View>

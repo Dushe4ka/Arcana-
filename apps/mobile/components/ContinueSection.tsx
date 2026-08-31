@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Animated,
   Image,
   NativeScrollEvent,
@@ -12,7 +11,6 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { GlassSurface } from "./GlassSurface";
 import { MagicDust } from "./MagicDust";
@@ -43,12 +41,14 @@ function FanCard({
   cardWidth,
   itemStride,
   scrollX,
+  onPress,
 }: {
   story: StorySummary;
   index: number;
   cardWidth: number;
   itemStride: number;
   scrollX: Animated.Value;
+  onPress: () => void;
 }) {
   // Every transform is driven straight off the live scroll position instead
   // of a "which card is active" step function, so the fan re-poses smoothly
@@ -91,25 +91,27 @@ function FanCard({
   });
 
   return (
-    <Animated.View
-      style={[
-        styles.card,
-        {
-          width: cardWidth,
-          height: cardWidth / CARD_ASPECT,
-          opacity,
-          // perspective must lead, directly followed by the rotation it
-          // applies to, for the 3D depth to actually take effect.
-          transform: [{ perspective: PERSPECTIVE }, { rotateY }, { rotateZ }, { translateY }, { scale }],
-        },
-      ]}
-    >
-      {story.coverImageUrl ? (
-        <Image source={{ uri: story.coverImageUrl }} style={styles.cover} resizeMode="cover" />
-      ) : (
-        <View style={[styles.cover, styles.coverFallback]} />
-      )}
-    </Animated.View>
+    <Pressable onPress={onPress}>
+      <Animated.View
+        style={[
+          styles.card,
+          {
+            width: cardWidth,
+            height: cardWidth / CARD_ASPECT,
+            opacity,
+            // perspective must lead, directly followed by the rotation it
+            // applies to, for the 3D depth to actually take effect.
+            transform: [{ perspective: PERSPECTIVE }, { rotateY }, { rotateZ }, { translateY }, { scale }],
+          },
+        ]}
+      >
+        {story.coverImageUrl ? (
+          <Image source={{ uri: story.coverImageUrl }} style={styles.cover} resizeMode="cover" />
+        ) : (
+          <View style={[styles.cover, styles.coverFallback]} />
+        )}
+      </Animated.View>
+    </Pressable>
   );
 }
 
@@ -289,6 +291,7 @@ export function ContinueSection({
                 cardWidth={cardWidth}
                 itemStride={itemStride}
                 scrollX={scrollX}
+                onPress={() => onOpen(story)}
               />
             );
           })}
@@ -316,13 +319,6 @@ export function ContinueSection({
           <GlassSurface style={styles.readButton} intensity={60} tintColor="rgba(194,147,143,0.78)">
             <Text style={styles.readButtonText}>Читать</Text>
           </GlassSurface>
-        </Pressable>
-        <Pressable
-          hitSlop={12}
-          style={({ pressed }) => [styles.bookmark, pressed && styles.bookmarkPressed]}
-          onPress={() => Alert.alert("Закладки", "Список закладок пока не готов. Загляните позже.")}
-        >
-          <Ionicons name="bookmark-outline" size={18} color={colors.textMuted} />
         </Pressable>
       </GlassSurface>
     </View>
@@ -411,11 +407,5 @@ const styles = StyleSheet.create({
     color: colors.background,
     fontSize: 14,
     fontWeight: "700",
-  },
-  bookmark: {
-    padding: 2,
-  },
-  bookmarkPressed: {
-    opacity: 0.6,
   },
 });

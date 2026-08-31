@@ -14,19 +14,24 @@ export function LibraryShelf({
   label,
   stories,
   onPressStory,
+  showBadge = true,
 }: {
   label: string;
   stories: StorySummary[];
   onPressStory: (story: StorySummary) => void;
+  /** "Продолжить чтение"/"Избранное" aren't about recency, so they skip the
+   * "Новинка" spotlight genre shelves get. */
+  showBadge?: boolean;
 }) {
   if (stories.length === 0) return null;
 
   // Only the single most recently published story on this shelf gets the
   // "Новинка" badge, matching the reference (a spotlight on the newest
   // addition, not a broad recency window every seeded story would trip).
-  const newestId = stories.reduce((newest, story) =>
-    new Date(story.createdAt) > new Date(newest.createdAt) ? story : newest,
-  ).id;
+  const newestId = showBadge
+    ? stories.reduce((newest, story) => (new Date(story.createdAt) > new Date(newest.createdAt) ? story : newest))
+        .id
+    : null;
 
   return (
     <View style={styles.section}>
@@ -47,6 +52,7 @@ export function LibraryShelf({
         {stories.map((story) => (
           <ShelfBookCard
             key={story.id}
+            storyId={story.id}
             title={t(story.title)}
             coverImageUrl={story.coverImageUrl}
             isNew={story.id === newestId}
