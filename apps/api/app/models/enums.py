@@ -14,6 +14,14 @@ class ContentStatus(str, enum.Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class StoryGenre(str, enum.Enum):
+    FANTASY = "FANTASY"
+    ROMANCE = "ROMANCE"
+    DRAMA = "DRAMA"
+    MYSTERY = "MYSTERY"
+    ADVENTURE = "ADVENTURE"
+
+
 class SceneNodeType(str, enum.Enum):
     DIALOGUE = "DIALOGUE"
     CHOICE = "CHOICE"

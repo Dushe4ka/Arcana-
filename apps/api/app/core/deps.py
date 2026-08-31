@@ -23,12 +23,9 @@ async def get_current_user(
 
     payload = decode_access_token(credentials.credentials)
     if payload is None:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "Недействительный или истёкший токен")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Недействительный или истёкший токен")
 
-    return AuthenticatedUser(
-        user_id=payload["sub"], email=payload["email"], role=payload["role"]
-    )
+    return AuthenticatedUser(user_id=payload["sub"], email=payload["email"], role=payload["role"])
 
 
 def require_roles(*roles: str):
@@ -36,8 +33,7 @@ def require_roles(*roles: str):
         user: AuthenticatedUser = Depends(get_current_user),
     ) -> AuthenticatedUser:
         if user.role not in roles:
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN, "Недостаточно прав для этого действия")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Недостаточно прав для этого действия")
         return user
 
     return checker

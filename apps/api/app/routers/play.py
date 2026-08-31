@@ -7,9 +7,7 @@ from app.schemas.player import StartChapterInput, SubmitChoiceInput
 from app.schemas.responses import SaveSlotOut, SaveSlotWithStoryOut
 from app.services import play_service, saves_service
 
-router = APIRouter(
-    prefix="/play", tags=["play"], dependencies=[Depends(get_current_user)]
-)
+router = APIRouter(prefix="/play", tags=["play"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/save-slots")
@@ -59,9 +57,7 @@ async def submit_choice(
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await play_service.submit_choice(
-        db, user.user_id, save_slot_id, body.choice_option_id
-    )
+    return await play_service.submit_choice(db, user.user_id, save_slot_id, body.choice_option_id)
 
 
 @router.post("/chapters/{chapter_id}/start")
@@ -71,6 +67,4 @@ async def start_chapter(
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await play_service.start_chapter(
-        db, user.user_id, chapter_id, body.slot_index
-    )
+    return await play_service.start_chapter(db, user.user_id, chapter_id, body.slot_index)

@@ -23,9 +23,7 @@ async def create(db: AsyncSession, data: CharacterCreateInput) -> Character:
     return character
 
 
-async def update(
-    db: AsyncSession, character_id: str, data: CharacterUpdateInput
-) -> Character:
+async def update(db: AsyncSession, character_id: str, data: CharacterUpdateInput) -> Character:
     character = await db.get(Character, character_id)
     if not character:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Персонаж не найден")
@@ -45,15 +43,11 @@ async def remove(db: AsyncSession, character_id: str) -> None:
 
 
 async def list_variables(db: AsyncSession, story_id: str) -> list[VariableDefinition]:
-    result = await db.scalars(
-        select(VariableDefinition).where(VariableDefinition.story_id == story_id)
-    )
+    result = await db.scalars(select(VariableDefinition).where(VariableDefinition.story_id == story_id))
     return list(result)
 
 
-async def create_variable(
-    db: AsyncSession, data: VariableDefinitionCreateInput
-) -> VariableDefinition:
+async def create_variable(db: AsyncSession, data: VariableDefinitionCreateInput) -> VariableDefinition:
     variable = VariableDefinition(**data.model_dump())
     db.add(variable)
     await db.commit()

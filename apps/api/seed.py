@@ -21,7 +21,7 @@ from app.models.content import (
     VariableDefinition,
 )
 from app.models.economy import DailyRewardState, Wallet
-from app.models.enums import ContentStatus, SceneNodeType
+from app.models.enums import ContentStatus, SceneNodeType, StoryGenre
 from app.models.user import PlayerProfile, User
 
 PLACEHOLDER_BG_NIGHT = "https://picsum.photos/seed/arcana-night-hall/1200/800"
@@ -37,18 +37,14 @@ async def seed_admin_user(db):
     email = "admin@arcana.app"
     existing = await db.scalar(select(User).where(User.email == email))
     if not existing:
-        user = User(
-            email=email, password_hash=hash_password("ChangeMe123!"), role="ADMIN"
-        )
+        user = User(email=email, password_hash=hash_password("ChangeMe123!"), role="ADMIN")
         db.add(user)
         await db.flush()
         db.add(PlayerProfile(user_id=user.id, display_name="Arcana Admin"))
         db.add(Wallet(user_id=user.id))
         db.add(DailyRewardState(user_id=user.id))
         await db.commit()
-    print(
-        f"Admin user ready: {email} / ChangeMe123! (change this password before going live)"
-    )
+    print(f"Admin user ready: {email} / ChangeMe123! (change this password before going live)")
 
 
 async def seed_demo_story(db):
@@ -62,6 +58,7 @@ async def seed_demo_story(db):
     story = Story(
         slug=slug,
         status=ContentStatus.PUBLISHED,
+        genre=StoryGenre.ROMANCE,
         title={"ru": "Маска и Слово", "en": "Mask and Word"},
         description={
             "ru": "Тайное общество «Arcana» открывает вам свои двери лишь на одну ночь. Кому вы отдадите своё внимание — обаятельному хозяину дома Данте или острой на язык Лие?",
@@ -128,23 +125,17 @@ async def seed_demo_story(db):
     db.add_all([confidence, rel_dante, rel_lia])
     await db.flush()
 
-    season = Season(
-        story_id=story.id, index=1, title={"ru": "Сезон 1", "en": "Season 1"}
-    )
+    season = Season(story_id=story.id, index=1, title={"ru": "Сезон 1", "en": "Season 1"})
     db.add(season)
     await db.flush()
 
-    await seed_chapter_one(
-        db, season.id, dante, lia, iris, confidence, rel_dante, rel_lia
-    )
+    await seed_chapter_one(db, season.id, dante, lia, iris, confidence, rel_dante, rel_lia)
     await seed_chapter_two(db, season.id, dante, lia, rel_dante)
 
     print(f'Demo story ready: "{slug}"')
 
 
-async def seed_chapter_one(
-    db, season_id, dante, lia, iris, confidence, rel_dante, rel_lia
-):
+async def seed_chapter_one(db, season_id, dante, lia, iris, confidence, rel_dante, rel_lia):
     chapter = Chapter(
         season_id=season_id,
         index=1,
@@ -201,15 +192,11 @@ async def seed_chapter_one(
         iris.id,
         "— Вы всё-таки пришли, — женщина в серебряной маске оглядывает вас с ног до головы. — Как вас представить гостям?",
         '"So you actually came," the woman in the silver mask looks you up and down. "How shall I announce you to the guests?"',
-        staged=[
-            {"characterId": str(iris.id), "sprite": "neutral", "position": "center"}
-        ],
+        staged=[{"characterId": str(iris.id), "sprite": "neutral", "position": "center"}],
     )
     await db.flush()
 
-    n4 = SceneNode(
-        chapter_id=chapter.id, type=SceneNodeType.CHOICE, order=4, data={"prompt": None}
-    )
+    n4 = SceneNode(chapter_id=chapter.id, type=SceneNodeType.CHOICE, order=4, data={"prompt": None})
     db.add(n4)
     await db.flush()
 
@@ -250,9 +237,7 @@ async def seed_chapter_one(
         dante.id,
         "— Расскажите мне что-нибудь, чего не знает больше никто в этом зале, — говорит он тихо, будто это уже тайна на двоих.",
         '"Tell me something no one else in this room knows," he says quietly, as if it\'s already a secret shared between the two of you.',
-        staged=[
-            {"characterId": str(dante.id), "sprite": "smile", "position": "center"}
-        ],
+        staged=[{"characterId": str(dante.id), "sprite": "smile", "position": "center"}],
     )
     n9 = dialogue(
         9,
@@ -331,9 +316,7 @@ async def seed_chapter_one(
                     "ru": "Уверенно назвать своё полное имя",
                     "en": "Confidently give your full name",
                 },
-                effects=[
-                    {"variableKey": confidence.key, "op": "INCREMENT", "value": 1}
-                ],
+                effects=[{"variableKey": confidence.key, "op": "INCREMENT", "value": 1}],
                 next_node_id=n5.id,
             ),
             ChoiceOption(
@@ -343,9 +326,7 @@ async def seed_chapter_one(
                     "ru": "Молча протянуть приглашение",
                     "en": "Silently hand over the invitation",
                 },
-                effects=[
-                    {"variableKey": confidence.key, "op": "DECREMENT", "value": 1}
-                ],
+                effects=[{"variableKey": confidence.key, "op": "DECREMENT", "value": 1}],
                 next_node_id=n5.id,
             ),
         ]
@@ -479,9 +460,7 @@ async def seed_chapter_two(db, season_id, dante, lia, rel_dante):
             },
             "isThought": False,
             "backgroundImageUrl": PLACEHOLDER_BG_DANCE,
-            "staged": [
-                {"characterId": str(dante.id), "sprite": "smile", "position": "center"}
-            ],
+            "staged": [{"characterId": str(dante.id), "sprite": "smile", "position": "center"}],
             "nextNodeId": None,
         },
     )
@@ -497,9 +476,7 @@ async def seed_chapter_two(db, season_id, dante, lia, rel_dante):
             },
             "isThought": False,
             "backgroundImageUrl": PLACEHOLDER_BG_DANCE,
-            "staged": [
-                {"characterId": str(lia.id), "sprite": "smirk", "position": "center"}
-            ],
+            "staged": [{"characterId": str(lia.id), "sprite": "smirk", "position": "center"}],
             "nextNodeId": None,
         },
     )

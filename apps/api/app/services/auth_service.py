@@ -31,17 +31,25 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _to_public_user(user: User) -> PublicUser:
-    return PublicUser(id=str(user.id), email=user.email, role=user.role.value)
+def _to_public_user(user: User, display_name: str) -> PublicUser:
+    return PublicUser(
+        id=str(user.id),
+        email=user.email,
+        display_name=display_name,
+        role=user.role.value,
+    )
+
+
+async def _get_display_name(db: AsyncSession, user_id) -> str:
+    profile = await db.scalar(select(PlayerProfile).where(PlayerProfile.user_id == user_id))
+    return profile.display_name if profile else ""
 
 
 async def _issue_token_pair(db: AsyncSession, user: User) -> TokenPair:
     access_token = create_access_token(str(user.id), user.email, user.role.value)
 
     jti = new_jti()
-    refresh_token, expires_at = create_refresh_token(
-        str(user.id), user.email, user.role.value, jti
-    )
+    refresh_token, expires_at = create_refresh_token(str(user.id), user.email, user.role.value, jti)
 
     db.add(
         RefreshToken(
@@ -59,9 +67,7 @@ async def _issue_token_pair(db: AsyncSession, user: User) -> TokenPair:
 async def register(db: AsyncSession, data: RegisterInput) -> AuthResponse:
     existing = await db.scalar(select(User).where(User.email == data.email))
     if existing:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "Пользователь с таким email уже зарегистрирован"
-        )
+        raise HTTPException(status.HTTP_409_CONFLICT, "Пользователь с таким email уже зарегистрирован")
 
     user = User(email=data.email, password_hash=hash_password(data.password))
     db.add(user)
@@ -73,7 +79,7 @@ async def register(db: AsyncSession, data: RegisterInput) -> AuthResponse:
     await db.commit()
 
     tokens = await _issue_token_pair(db, user)
-    return AuthResponse(user=_to_public_user(user), **tokens.model_dump())
+    return AuthResponse(user=_to_public_user(user, data.display_name), **tokens.model_dump())
 
 
 async def login(db: AsyncSession, data: LoginInput) -> AuthResponse:
@@ -81,16 +87,15 @@ async def login(db: AsyncSession, data: LoginInput) -> AuthResponse:
     if not user or not verify_password(user.password_hash, data.password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный email или пароль")
 
+    display_name = await _get_display_name(db, user.id)
     tokens = await _issue_token_pair(db, user)
-    return AuthResponse(user=_to_public_user(user), **tokens.model_dump())
+    return AuthResponse(user=_to_public_user(user, display_name), **tokens.model_dump())
 
 
 async def refresh(db: AsyncSession, refresh_token: str) -> TokenPair:
     payload = decode_refresh_token(refresh_token)
     if payload is None:
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "Недействительный refresh-токен"
-        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Недействительный refresh-токен")
 
     stored = await db.get(RefreshToken, payload["jti"])
     token_hash = _hash_token(refresh_token)
@@ -101,9 +106,7 @@ async def refresh(db: AsyncSession, refresh_token: str) -> TokenPair:
         or stored.expires_at < now
         or stored.token_hash != token_hash
     ):
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "Refresh-токен отозван или истёк"
-        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh-токен отозван или истёк")
 
     # Rotate: revoke the used token and issue a fresh pair.
     stored.revoked_at = now
@@ -130,4 +133,5 @@ async def me(db: AsyncSession, user_id: str) -> PublicUser:
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Пользователь не найден")
-    return _to_public_user(user)
+    display_name = await _get_display_name(db, user.id)
+    return _to_public_user(user, display_name)

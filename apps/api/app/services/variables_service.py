@@ -30,30 +30,17 @@ class VariableContext:
     def as_value_map(self) -> dict[str, VariableScalar]:
         result: dict[str, VariableScalar] = {}
         for lookup_key, definition in self._defs_by_lookup_key.items():
-            result[lookup_key] = self._values_by_def_id.get(
-                str(definition.id), definition.default_value
-            )
+            result[lookup_key] = self._values_by_def_id.get(str(definition.id), definition.default_value)
         return result
 
-    def find_def(
-        self, variable_key: str, character_id: str | None = None
-    ) -> VariableDefinition | None:
-        return self._defs_by_lookup_key.get(
-            variable_lookup_key(variable_key, character_id)
-        )
+    def find_def(self, variable_key: str, character_id: str | None = None) -> VariableDefinition | None:
+        return self._defs_by_lookup_key.get(variable_lookup_key(variable_key, character_id))
 
 
-async def load_context(
-    db: AsyncSession, user_id: str, story_id: str
-) -> VariableContext:
-    defs = list(
-        await db.scalars(
-            select(VariableDefinition).where(VariableDefinition.story_id == story_id)
-        )
-    )
+async def load_context(db: AsyncSession, user_id: str, story_id: str) -> VariableContext:
+    defs = list(await db.scalars(select(VariableDefinition).where(VariableDefinition.story_id == story_id)))
     defs_by_lookup_key = {
-        variable_lookup_key(d.key, str(d.character_id) if d.character_id else None): d
-        for d in defs
+        variable_lookup_key(d.key, str(d.character_id) if d.character_id else None): d for d in defs
     }
 
     def_ids = [d.id for d in defs]
@@ -74,9 +61,7 @@ async def load_context(
     return VariableContext(defs_by_lookup_key, values_by_def_id)
 
 
-async def apply_effects(
-    db: AsyncSession, user_id: str, story_id: str, effects: EffectList
-) -> None:
+async def apply_effects(db: AsyncSession, user_id: str, story_id: str, effects: EffectList) -> None:
     """Applies effects to a player's variables, upserting rows as needed. Unknown keys are
     logged and skipped."""
     if not effects:

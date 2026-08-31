@@ -6,9 +6,7 @@ from app.database import get_db
 from app.schemas.responses import WalletOut
 from app.services import wallet_service
 
-router = APIRouter(
-    prefix="/wallet", tags=["wallet"], dependencies=[Depends(get_current_user)]
-)
+router = APIRouter(prefix="/wallet", tags=["wallet"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=WalletOut)

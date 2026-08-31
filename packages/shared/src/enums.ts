@@ -9,6 +9,16 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const CONTENT_STATUSES = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
 export type ContentStatus = (typeof CONTENT_STATUSES)[number];
 
+/** A story's single primary genre - drives which library shelf it appears on. */
+export const STORY_GENRES = [
+  "FANTASY",
+  "ROMANCE",
+  "DRAMA",
+  "MYSTERY",
+  "ADVENTURE",
+] as const;
+export type StoryGenre = (typeof STORY_GENRES)[number];
+
 export const VARIABLE_TYPES = ["NUMBER", "BOOLEAN", "STRING"] as const;
 export type VariableType = (typeof VARIABLE_TYPES)[number];
 

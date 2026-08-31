@@ -52,9 +52,7 @@ async def spend_energy(db: AsyncSession, user_id: str, amount: int) -> None:
         return
     wallet = await get_wallet(db, user_id)
     if wallet.energy < amount:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Недостаточно энергии для открытия этой главы"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно энергии для открытия этой главы")
     wallet.energy -= amount
     await db.commit()
 
@@ -88,6 +86,14 @@ async def spend_currency(
     await db.commit()
 
 
+async def grant_xp(db: AsyncSession, user_id: str, amount: int, reason: str) -> None:
+    if amount <= 0:
+        return
+    wallet = await _get_wallet_by_user(db, user_id)
+    wallet.xp += amount
+    await db.commit()
+
+
 async def grant_currency(
     db: AsyncSession, user_id: str, currency: CurrencyCode, amount: int, reason: str
 ) -> None:
@@ -117,25 +123,17 @@ def _reward_for_streak_day(day: int) -> dict:
 
 
 async def claim_daily_reward(db: AsyncSession, user_id: str) -> dict:
-    state = await db.scalar(
-        select(DailyRewardState).where(DailyRewardState.user_id == user_id)
-    )
+    state = await db.scalar(select(DailyRewardState).where(DailyRewardState.user_id == user_id))
     if not state:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Состояние наград не найдено")
 
     now = datetime.now(UTC)
 
     if state.last_claimed_at is not None and (now - state.last_claimed_at) < DAY:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Награда за сегодня уже получена"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Награда за сегодня уже получена")
 
-    streak_broken = (
-        state.last_claimed_at is not None and (now - state.last_claimed_at) > 2 * DAY
-    )
-    next_streak = (
-        1 if streak_broken or state.last_claimed_at is None else state.streak + 1
-    )
+    streak_broken = state.last_claimed_at is not None and (now - state.last_claimed_at) > 2 * DAY
+    next_streak = 1 if streak_broken or state.last_claimed_at is None else state.streak + 1
     reward = _reward_for_streak_day(next_streak)
 
     state.streak = next_streak

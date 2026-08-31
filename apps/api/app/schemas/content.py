@@ -13,11 +13,15 @@ VARIABLE_KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 # --- Stories / seasons / chapters -----------------------------------------------------------
 
 
+STORY_GENRES = Literal["FANTASY", "ROMANCE", "DRAMA", "MYSTERY", "ADVENTURE"]
+
+
 class StoryCreateInput(CamelModel):
     slug: str = Field(min_length=2, max_length=80)
     title: LocalizedText
     description: LocalizedText | None = None
     cover_image_url: str | None = None
+    genre: STORY_GENRES
 
     @field_validator("slug")
     @classmethod
@@ -32,6 +36,7 @@ class StoryUpdateInput(CamelModel):
     title: LocalizedText | None = None
     description: LocalizedText | None = None
     cover_image_url: str | None = None
+    genre: STORY_GENRES | None = None
     status: Literal["DRAFT", "PUBLISHED", "ARCHIVED"] | None = None
 
 
@@ -171,11 +176,7 @@ class EndNodeCreate(CamelModel):
 
 
 SceneNodeCreateInput = Annotated[
-    DialogueNodeCreate
-    | ChoiceNodeCreate
-    | ConditionNodeCreate
-    | EffectNodeCreate
-    | EndNodeCreate,
+    DialogueNodeCreate | ChoiceNodeCreate | ConditionNodeCreate | EffectNodeCreate | EndNodeCreate,
     Field(discriminator="type"),
 ]
 

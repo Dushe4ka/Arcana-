@@ -23,9 +23,7 @@ async def list_all(db: AsyncSession) -> list[Story]:
 
 async def list_published(db: AsyncSession) -> list[Story]:
     result = await db.scalars(
-        select(Story)
-        .where(Story.status == ContentStatus.PUBLISHED)
-        .order_by(Story.created_at.desc())
+        select(Story).where(Story.status == ContentStatus.PUBLISHED).order_by(Story.created_at.desc())
     )
     return list(result)
 
@@ -43,9 +41,7 @@ async def get_published_detail(db: AsyncSession, story_id: str) -> Story:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "История не найдена")
     # Only expose published chapters to players, even within a published season.
     for season in story.seasons:
-        season.chapters = [
-            c for c in season.chapters if c.status == ContentStatus.PUBLISHED
-        ]
+        season.chapters = [c for c in season.chapters if c.status == ContentStatus.PUBLISHED]
     return story
 
 
@@ -81,9 +77,7 @@ async def update(db: AsyncSession, story_id: str, data: StoryUpdateInput) -> Sto
     return story
 
 
-async def set_status(
-    db: AsyncSession, story_id: str, new_status: ContentStatus
-) -> Story:
+async def set_status(db: AsyncSession, story_id: str, new_status: ContentStatus) -> Story:
     story = await _require_story(db, story_id)
     story.status = new_status
     await db.commit()
@@ -141,9 +135,7 @@ async def get_chapter(db: AsyncSession, chapter_id: str) -> Chapter:
     return chapter
 
 
-async def update_chapter(
-    db: AsyncSession, chapter_id: str, data: ChapterUpdateInput
-) -> Chapter:
+async def update_chapter(db: AsyncSession, chapter_id: str, data: ChapterUpdateInput) -> Chapter:
     chapter = await _require_chapter(db, chapter_id)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(chapter, field, value)
@@ -152,9 +144,7 @@ async def update_chapter(
     return chapter
 
 
-async def set_chapter_status(
-    db: AsyncSession, chapter_id: str, new_status: ContentStatus
-) -> Chapter:
+async def set_chapter_status(db: AsyncSession, chapter_id: str, new_status: ContentStatus) -> Chapter:
     chapter = await _require_chapter(db, chapter_id)
     if new_status == ContentStatus.PUBLISHED and not chapter.entry_node_id:
         raise HTTPException(

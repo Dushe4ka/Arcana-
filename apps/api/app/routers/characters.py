@@ -19,25 +19,17 @@ router = APIRouter(
 
 
 @router.get("/characters", response_model=list[CharacterOut])
-async def list_characters(
-    story_id: str = Query(alias="storyId"), db: AsyncSession = Depends(get_db)
-):
+async def list_characters(story_id: str = Query(alias="storyId"), db: AsyncSession = Depends(get_db)):
     return await characters_service.list_for_story(db, story_id)
 
 
-@router.post(
-    "/characters", status_code=status.HTTP_201_CREATED, response_model=CharacterOut
-)
-async def create_character(
-    body: CharacterCreateInput, db: AsyncSession = Depends(get_db)
-):
+@router.post("/characters", status_code=status.HTTP_201_CREATED, response_model=CharacterOut)
+async def create_character(body: CharacterCreateInput, db: AsyncSession = Depends(get_db)):
     return await characters_service.create(db, body)
 
 
 @router.patch("/characters/{character_id}", response_model=CharacterOut)
-async def update_character(
-    character_id: str, body: CharacterUpdateInput, db: AsyncSession = Depends(get_db)
-):
+async def update_character(character_id: str, body: CharacterUpdateInput, db: AsyncSession = Depends(get_db)):
     return await characters_service.update(db, character_id, body)
 
 
@@ -47,9 +39,7 @@ async def delete_character(character_id: str, db: AsyncSession = Depends(get_db)
 
 
 @router.get("/variables", response_model=list[VariableDefinitionOut])
-async def list_variables(
-    story_id: str = Query(alias="storyId"), db: AsyncSession = Depends(get_db)
-):
+async def list_variables(story_id: str = Query(alias="storyId"), db: AsyncSession = Depends(get_db)):
     return await characters_service.list_variables(db, story_id)
 
 
@@ -58,9 +48,7 @@ async def list_variables(
     status_code=status.HTTP_201_CREATED,
     response_model=VariableDefinitionOut,
 )
-async def create_variable(
-    body: VariableDefinitionCreateInput, db: AsyncSession = Depends(get_db)
-):
+async def create_variable(body: VariableDefinitionCreateInput, db: AsyncSession = Depends(get_db)):
     return await characters_service.create_variable(db, body)
 
 

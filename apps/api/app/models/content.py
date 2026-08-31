@@ -6,7 +6,13 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.enums import ContentStatus, CurrencyCode, SceneNodeType, VariableType
+from app.models.enums import (
+    ContentStatus,
+    CurrencyCode,
+    SceneNodeType,
+    StoryGenre,
+    VariableType,
+)
 from app.models.mixins import TimestampMixin, UUIDPKMixin
 
 
@@ -18,13 +24,11 @@ class Story(Base, UUIDPKMixin, TimestampMixin):
     description: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     cover_image_url: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[ContentStatus] = mapped_column(default=ContentStatus.DRAFT)
+    # Single primary genre - drives which library shelf a story appears on in the app.
+    genre: Mapped[StoryGenre] = mapped_column(default=StoryGenre.ROMANCE)
 
-    seasons: Mapped[list["Season"]] = relationship(
-        back_populates="story", cascade="all, delete-orphan"
-    )
-    characters: Mapped[list["Character"]] = relationship(
-        back_populates="story", cascade="all, delete-orphan"
-    )
+    seasons: Mapped[list["Season"]] = relationship(back_populates="story", cascade="all, delete-orphan")
+    characters: Mapped[list["Character"]] = relationship(back_populates="story", cascade="all, delete-orphan")
     variable_definitions: Mapped[list["VariableDefinition"]] = relationship(
         back_populates="story", cascade="all, delete-orphan"
     )
@@ -41,9 +45,7 @@ class Season(Base, UUIDPKMixin, TimestampMixin):
     title: Mapped[dict] = mapped_column(JSONB)
 
     story: Mapped[Story] = relationship(back_populates="seasons")
-    chapters: Mapped[list["Chapter"]] = relationship(
-        back_populates="season", cascade="all, delete-orphan"
-    )
+    chapters: Mapped[list["Chapter"]] = relationship(back_populates="season", cascade="all, delete-orphan")
 
 
 class Chapter(Base, UUIDPKMixin, TimestampMixin):
@@ -84,9 +86,7 @@ class SceneNode(Base, UUIDPKMixin, TimestampMixin):
     # Type-specific payload, shape validated by Pydantic schemas (see app/schemas/content.py).
     data: Mapped[dict] = mapped_column(JSONB)
 
-    chapter: Mapped[Chapter] = relationship(
-        back_populates="nodes", foreign_keys=[chapter_id]
-    )
+    chapter: Mapped[Chapter] = relationship(back_populates="nodes", foreign_keys=[chapter_id])
     choice_options: Mapped[list["ChoiceOption"]] = relationship(
         back_populates="node", cascade="all, delete-orphan"
     )
@@ -106,9 +106,7 @@ class ChoiceOption(Base, UUIDPKMixin, TimestampMixin):
     visible_when: Mapped[list] = mapped_column(JSONB, default=list)
     # EffectList - applied when this option is chosen.
     effects: Mapped[list] = mapped_column(JSONB, default=list)
-    next_node_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
+    next_node_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     node: Mapped[SceneNode] = relationship(back_populates="choice_options")
 
@@ -125,9 +123,7 @@ class Character(Base, UUIDPKMixin, TimestampMixin):
     sprites: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     story: Mapped[Story] = relationship(back_populates="characters")
-    variable_definitions: Mapped[list["VariableDefinition"]] = relationship(
-        back_populates="character"
-    )
+    variable_definitions: Mapped[list["VariableDefinition"]] = relationship(back_populates="character")
 
 
 class VariableDefinition(Base, UUIDPKMixin, TimestampMixin):
@@ -151,6 +147,4 @@ class VariableDefinition(Base, UUIDPKMixin, TimestampMixin):
     max_value: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     story: Mapped[Story] = relationship(back_populates="variable_definitions")
-    character: Mapped[Character | None] = relationship(
-        back_populates="variable_definitions"
-    )
+    character: Mapped[Character | None] = relationship(back_populates="variable_definitions")

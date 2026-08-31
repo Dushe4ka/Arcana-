@@ -6,9 +6,7 @@ from sqlalchemy.orm import selectinload
 from app.models.player import SaveSlot
 
 
-async def list_for_story(
-    db: AsyncSession, user_id: str, story_id: str
-) -> list[SaveSlot]:
+async def list_for_story(db: AsyncSession, user_id: str, story_id: str) -> list[SaveSlot]:
     result = await db.scalars(
         select(SaveSlot)
         .where(SaveSlot.user_id == user_id, SaveSlot.story_id == story_id)

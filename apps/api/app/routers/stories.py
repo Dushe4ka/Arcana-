@@ -45,9 +45,7 @@ async def create_story(body: StoryCreateInput, db: AsyncSession = Depends(get_db
 
 
 @router.patch("/stories/{story_id}", response_model=StoryOut)
-async def update_story(
-    story_id: str, body: StoryUpdateInput, db: AsyncSession = Depends(get_db)
-):
+async def update_story(story_id: str, body: StoryUpdateInput, db: AsyncSession = Depends(get_db)):
     return await stories_service.update(db, story_id, body)
 
 
@@ -81,25 +79,19 @@ async def get_chapter(chapter_id: str, db: AsyncSession = Depends(get_db)):
     return await stories_service.get_chapter(db, chapter_id)
 
 
-@router.post(
-    "/chapters", status_code=status.HTTP_201_CREATED, response_model=ChapterOut
-)
+@router.post("/chapters", status_code=status.HTTP_201_CREATED, response_model=ChapterOut)
 async def create_chapter(body: ChapterCreateInput, db: AsyncSession = Depends(get_db)):
     return await stories_service.create_chapter(db, body)
 
 
 @router.patch("/chapters/{chapter_id}", response_model=ChapterOut)
-async def update_chapter(
-    chapter_id: str, body: ChapterUpdateInput, db: AsyncSession = Depends(get_db)
-):
+async def update_chapter(chapter_id: str, body: ChapterUpdateInput, db: AsyncSession = Depends(get_db)):
     return await stories_service.update_chapter(db, chapter_id, body)
 
 
 @router.post("/chapters/{chapter_id}/publish", response_model=ChapterOut)
 async def publish_chapter(chapter_id: str, db: AsyncSession = Depends(get_db)):
-    return await stories_service.set_chapter_status(
-        db, chapter_id, ContentStatus.PUBLISHED
-    )
+    return await stories_service.set_chapter_status(db, chapter_id, ContentStatus.PUBLISHED)
 
 
 @router.post("/chapters/{chapter_id}/unpublish", response_model=ChapterOut)

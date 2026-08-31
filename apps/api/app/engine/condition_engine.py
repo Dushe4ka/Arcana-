@@ -13,17 +13,13 @@ def variable_lookup_key(variable_key: str, character_id: str | None = None) -> s
     return f"{variable_key}::{character_id or ''}"
 
 
-def evaluate_condition_group(
-    conditions: ConditionGroup, values: dict[str, VariableScalar]
-) -> bool:
+def evaluate_condition_group(conditions: ConditionGroup, values: dict[str, VariableScalar]) -> bool:
     """Evaluates a group of conditions with AND semantics (every condition must pass).
     An empty group always passes - most dialogue/effect nodes have no gating."""
     return all(_evaluate_condition(c, values) for c in conditions)
 
 
-def _evaluate_condition(
-    condition: Condition, values: dict[str, VariableScalar]
-) -> bool:
+def _evaluate_condition(condition: Condition, values: dict[str, VariableScalar]) -> bool:
     key = variable_lookup_key(condition.variable_key, condition.character_id)
     current = values.get(key)
     target = condition.value
@@ -62,28 +58,17 @@ def apply_effect(
     if effect.op == "SET":
         next_value: VariableScalar = effect.value
     else:
-        current_number = (
-            current
-            if isinstance(current, int | float) and not isinstance(current, bool)
-            else 0
-        )
+        current_number = current if isinstance(current, int | float) and not isinstance(current, bool) else 0
         delta_number = (
             effect.value
-            if isinstance(effect.value, int | float)
-            and not isinstance(effect.value, bool)
+            if isinstance(effect.value, int | float) and not isinstance(effect.value, bool)
             else 0
         )
         next_value = (
-            current_number + delta_number
-            if effect.op == "INCREMENT"
-            else current_number - delta_number
+            current_number + delta_number if effect.op == "INCREMENT" else current_number - delta_number
         )
 
-    if (
-        isinstance(next_value, int | float)
-        and not isinstance(next_value, bool)
-        and bounds
-    ):
+    if isinstance(next_value, int | float) and not isinstance(next_value, bool) and bounds:
         if bounds.min_value is not None:
             next_value = max(bounds.min_value, next_value)
         if bounds.max_value is not None:

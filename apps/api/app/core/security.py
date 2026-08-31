@@ -23,16 +23,12 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 
 def create_access_token(user_id: str, email: str, role: str) -> str:
-    expire = datetime.now(UTC) + timedelta(
-        minutes=settings.jwt_access_ttl_minutes
-    )
+    expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_access_ttl_minutes)
     payload = {"sub": user_id, "email": email, "role": role, "exp": expire}
     return jwt.encode(payload, settings.jwt_access_secret, algorithm="HS256")
 
 
-def create_refresh_token(
-    user_id: str, email: str, role: str, jti: str
-) -> tuple[str, datetime]:
+def create_refresh_token(user_id: str, email: str, role: str, jti: str) -> tuple[str, datetime]:
     expire = datetime.now(UTC) + timedelta(days=settings.jwt_refresh_ttl_days)
     payload = {"sub": user_id, "email": email, "role": role, "jti": jti, "exp": expire}
     token = jwt.encode(payload, settings.jwt_refresh_secret, algorithm="HS256")

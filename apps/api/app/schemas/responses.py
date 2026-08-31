@@ -14,9 +14,7 @@ from app.schemas.common import LocalizedText
 
 
 class ORMModel(CamelModel):
-    model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, from_attributes=True
-    )
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, from_attributes=True)
 
 
 class ChoiceOptionOut(ORMModel):
@@ -89,6 +87,7 @@ class StoryOut(ORMModel):
     description: LocalizedText | None
     cover_image_url: str | None
     status: str
+    genre: str
     created_at: datetime
     updated_at: datetime
 
@@ -141,4 +140,9 @@ class WalletOut(ORMModel):
     hard: int
     energy: int
     energy_updated_at: datetime
+    xp: int
+    # Derived from xp (Wallet.level / .xp_into_level / .xp_for_next_level) - never stored.
+    level: int
+    xp_into_level: int
+    xp_for_next_level: int
     updated_at: datetime

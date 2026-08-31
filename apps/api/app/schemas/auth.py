@@ -21,6 +21,7 @@ class RefreshTokenInput(CamelModel):
 class PublicUser(CamelModel):
     id: str
     email: str
+    display_name: str
     role: str
 
 

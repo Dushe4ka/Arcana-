@@ -39,9 +39,7 @@ async def create_node(db: AsyncSession, data: SceneNodeCreateInput) -> SceneNode
     return node
 
 
-async def update_node(
-    db: AsyncSession, node_id: str, data: SceneNodeUpdateInput
-) -> SceneNode:
+async def update_node(db: AsyncSession, node_id: str, data: SceneNodeUpdateInput) -> SceneNode:
     node = await _require_node(db, node_id)
 
     new_data = node.data
@@ -76,9 +74,7 @@ async def remove_node(db: AsyncSession, node_id: str) -> None:
 # --- Choice options -----------------------------------------------------------------------
 
 
-async def create_choice_option(
-    db: AsyncSession, data: ChoiceOptionCreateInput
-) -> ChoiceOption:
+async def create_choice_option(db: AsyncSession, data: ChoiceOptionCreateInput) -> ChoiceOption:
     node = await _require_node(db, data.node_id)
     if node.type.value != "CHOICE":
         raise HTTPException(

@@ -16,6 +16,10 @@ from app.schemas.content import (
 from app.services import variables_service, wallet_service
 
 MAX_AUTO_TRAVERSAL_STEPS = 100
+# v1: flat award every time a chapter's END node is reached, including replays - no
+# per-chapter completion tracking yet, so this can be farmed by replaying a finished
+# chapter. Acceptable known limitation for now; revisit once that matters.
+CHAPTER_COMPLETE_XP = 50
 
 
 # ---------------------------------------------------------------------------------------
@@ -23,22 +27,14 @@ MAX_AUTO_TRAVERSAL_STEPS = 100
 # ---------------------------------------------------------------------------------------
 
 
-async def start_chapter(
-    db: AsyncSession, user_id: str, chapter_id: str, slot_index: int
-) -> dict:
+async def start_chapter(db: AsyncSession, user_id: str, chapter_id: str, slot_index: int) -> dict:
     chapter = await db.scalar(
-        select(Chapter)
-        .where(Chapter.id == chapter_id)
-        .options(selectinload(Chapter.season))
+        select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
     )
     if not chapter or chapter.status.value != "PUBLISHED":
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована"
-        )
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
     if not chapter.entry_node_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "У главы не задана начальная сцена"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У главы не задана начальная сцена")
 
     story_id = str(chapter.season.story_id)
 
@@ -98,30 +94,22 @@ async def advance(db: AsyncSession, user_id: str, save_slot_id: str) -> dict:
     return await _resolve_view(db, user_id, slot)
 
 
-async def submit_choice(
-    db: AsyncSession, user_id: str, save_slot_id: str, choice_option_id: str
-) -> dict:
+async def submit_choice(db: AsyncSession, user_id: str, save_slot_id: str, choice_option_id: str) -> dict:
     slot = await _get_owned_slot(db, user_id, save_slot_id)
     node = await _get_node(db, slot.current_node_id)
 
     if node.type.value != "CHOICE":
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "В текущей сцене нет вариантов выбора"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "В текущей сцене нет вариантов выбора")
 
     option = await db.get(ChoiceOption, choice_option_id)
     if not option or str(option.node_id) != str(node.id):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Этот вариант недоступен в текущей сцене"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Этот вариант недоступен в текущей сцене")
 
     context = await variables_service.load_context(db, user_id, str(slot.story_id))
 
     visible_when = [Condition.model_validate(c) for c in option.visible_when]
     if not evaluate_condition_group(visible_when, context.as_value_map()):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN, "Этот вариант выбора сейчас недоступен"
-        )
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Этот вариант выбора сейчас недоступен")
 
     if option.cost_currency and option.cost_amount > 0:
         await wallet_service.spend_currency(
@@ -136,9 +124,7 @@ async def submit_choice(
     await variables_service.apply_effects(db, user_id, str(slot.story_id), effects)
 
     if not option.next_node_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "У этого варианта не задано продолжение сюжета"
-        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У этого варианта не задано продолжение сюжета")
 
     slot.current_node_id = option.next_node_id
     await db.commit()
@@ -163,9 +149,7 @@ async def _resolve_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
 
     while True:
         if not node_id:
-            raise HTTPException(
-                status.HTTP_404_NOT_FOUND, "У этого сохранения нет текущей сцены"
-            )
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "У этого сохранения нет текущей сцены")
         steps += 1
         if steps > MAX_AUTO_TRAVERSAL_STEPS:
             raise HTTPException(
@@ -193,6 +177,9 @@ async def _resolve_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
             await db.commit()
 
         if node.type.value == "END":
+            await wallet_service.grant_xp(
+                db, user_id, CHAPTER_COMPLETE_XP, reason=f"chapter_complete:{slot.chapter_id}"
+            )
             return {"type": "END", "saveSlot": _to_save_slot_dto(slot)}
 
         if node.type.value == "DIALOGUE":
@@ -202,24 +189,18 @@ async def _resolve_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
         # CHOICE
         options = list(
             await db.scalars(
-                select(ChoiceOption)
-                .where(ChoiceOption.node_id == node.id)
-                .order_by(ChoiceOption.order)
+                select(ChoiceOption).where(ChoiceOption.node_id == node.id).order_by(ChoiceOption.order)
             )
         )
         data = ChoiceNodeData.model_validate(node.data)
         return await _build_choice_view(db, node.id, data, options, context, slot)
 
 
-async def _build_dialogue_view(
-    db: AsyncSession, node_id, data: DialogueNodeData, slot: SaveSlot
-) -> dict:
+async def _build_dialogue_view(db: AsyncSession, node_id, data: DialogueNodeData, slot: SaveSlot) -> dict:
     story_id = str(slot.story_id)
     characters = await _get_character_summaries(db, story_id)
 
-    speaker = (
-        characters.get(data.speaker_character_id) if data.speaker_character_id else None
-    )
+    speaker = characters.get(data.speaker_character_id) if data.speaker_character_id else None
     staged = await _resolve_staged_characters(db, story_id, data.staged)
 
     return {
@@ -258,17 +239,13 @@ async def _build_choice_view(
         if not evaluate_condition_group(visible_when, values):
             continue
         balance = (
-            wallet.hard
-            if option.cost_currency and option.cost_currency.value == "HARD"
-            else wallet.soft
+            wallet.hard if option.cost_currency and option.cost_currency.value == "HARD" else wallet.soft
         )
         visible_options.append(
             {
                 "id": str(option.id),
                 "text": option.text,
-                "costCurrency": option.cost_currency.value
-                if option.cost_currency
-                else None,
+                "costCurrency": option.cost_currency.value if option.cost_currency else None,
                 "costAmount": option.cost_amount,
                 "affordable": not option.cost_currency
                 or option.cost_amount == 0
@@ -285,9 +262,7 @@ async def _build_choice_view(
     }
 
 
-async def _resolve_staged_characters(
-    db: AsyncSession, story_id: str, staged: list
-) -> list[dict]:
+async def _resolve_staged_characters(db: AsyncSession, story_id: str, staged: list) -> list[dict]:
     if not staged:
         return []
     characters = await _get_character_summaries(db, story_id, with_sprites=True)
@@ -308,15 +283,11 @@ async def _resolve_staged_characters(
     return result
 
 
-async def _get_character_summaries(
-    db: AsyncSession, story_id: str, with_sprites: bool = False
-) -> dict:
+async def _get_character_summaries(db: AsyncSession, story_id: str, with_sprites: bool = False) -> dict:
     """Not cached: story rosters are small (a handful of characters), and always reflecting
     the latest admin edits (a re-uploaded sprite, a renamed character) matters more here than
     shaving a few milliseconds off a read that already does several queries."""
-    characters = list(
-        await db.scalars(select(Character).where(Character.story_id == story_id))
-    )
+    characters = list(await db.scalars(select(Character).where(Character.story_id == story_id)))
     result = {}
     for c in characters:
         entry = {"id": str(c.id), "name": c.name, "nameColor": c.name_color}
@@ -326,9 +297,7 @@ async def _get_character_summaries(
     return result
 
 
-async def _get_owned_slot(
-    db: AsyncSession, user_id: str, save_slot_id: str
-) -> SaveSlot:
+async def _get_owned_slot(db: AsyncSession, user_id: str, save_slot_id: str) -> SaveSlot:
     slot = await db.get(SaveSlot, save_slot_id)
     if not slot or str(slot.user_id) != str(user_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Сохранение не найдено")
