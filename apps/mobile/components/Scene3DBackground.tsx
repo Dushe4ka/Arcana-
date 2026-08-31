@@ -11,6 +11,12 @@ type Props = {
   coverUrls?: string[];
   bookCount?: number;
   starCount?: number;
+  /** Shifts the whole flying-book orbit up (+) or down (-) in world space, so
+   * they can be confined to a band of the screen (e.g. behind a header) on
+   * content-dense screens instead of drifting across the vertical center by
+   * default. 0 = original centered orbit, unchanged from before this prop
+   * existed. */
+  bookYOffset?: number;
   /** Half-width (in the -5..5 star field space) of a center column with no
    * stars - keeps sparkle off a foreground subject's face when the photo
    * behind this layer has one centered, instead of scattering everywhere. */
@@ -19,6 +25,8 @@ type Props = {
    * starfield read as a bright, volumetric foreground+background effect
    * rather than a faint backdrop. */
   starOpacity?: number;
+  /** Overrides the shared book/star opacity for books only. */
+  bookOpacity?: number;
 };
 
 const STAR_VERTEX = `
@@ -140,8 +148,13 @@ function CoverFace({ url }: { url: string }) {
     Asset.fromURI(url)
       .downloadAsync()
       .then((asset) => {
-        if (cancelled) return;
-        const tex = new THREE.Texture(asset as unknown as HTMLImageElement);
+        if (cancelled || !asset.localUri) return;
+        // A plain { localUri, width, height } object, not the raw Asset instance - three's
+        // texture-completeness checks read width/height directly off `image`, and
+        // expo-gl's texImage2D shim only looks for `localUri`; extra Asset fields (uri,
+        // hash, type, ...) risk confusing three's image-type detection.
+        const image = { localUri: asset.localUri, width: asset.width, height: asset.height };
+        const tex = new THREE.Texture(image as unknown as HTMLImageElement);
         tex.needsUpdate = true;
         setTexture(tex);
       })
@@ -154,8 +167,8 @@ function CoverFace({ url }: { url: string }) {
   if (!texture) return null;
 
   return (
-    <mesh position={[0, 0, 0.056]}>
-      <planeGeometry args={[0.38, 0.54]} />
+    <mesh position={[0, 0, 0.084]}>
+      <planeGeometry args={[0.57, 0.81]} />
       <meshStandardMaterial map={texture} roughness={0.5} />
     </mesh>
   );
@@ -170,7 +183,7 @@ function FlyingBook({ seed, opacity }: { seed: BookSeed; opacity: number }) {
     const t = state.clock.elapsedTime * seed.speed + t0;
     group.current.position.set(
       Math.cos(t) * seed.radius,
-      seed.height + Math.sin(t * 1.3) * 0.35,
+      seed.height + Math.sin(t * 1.3) * 0.3,
       Math.sin(t) * seed.radius - 2,
     );
     group.current.rotation.y = t * seed.spin;
@@ -180,11 +193,11 @@ function FlyingBook({ seed, opacity }: { seed: BookSeed; opacity: number }) {
   return (
     <group ref={group}>
       {/* Thin gold "cover" box slightly larger than the body, faked as an outline. */}
-      <mesh scale={[0.46, 0.62, 0.09]}>
+      <mesh scale={[0.69, 0.93, 0.135]}>
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color="#d4af6a" roughness={0.3} metalness={0.75} transparent opacity={opacity} />
       </mesh>
-      <mesh scale={[0.4, 0.56, 0.11]}>
+      <mesh scale={[0.6, 0.84, 0.165]}>
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial color={seed.color} roughness={0.7} transparent opacity={opacity} />
       </mesh>
@@ -199,20 +212,23 @@ function Scene({
   starCount,
   avoidCenterX,
   starOpacity,
-}: Required<Omit<Props, "coverUrls" | "avoidCenterX" | "starOpacity">> &
-  Pick<Props, "coverUrls" | "avoidCenterX" | "starOpacity">) {
+  bookOpacity,
+  bookYOffset,
+}: Required<Omit<Props, "coverUrls" | "avoidCenterX" | "starOpacity" | "bookOpacity" | "bookYOffset">> &
+  Pick<Props, "coverUrls" | "avoidCenterX" | "starOpacity" | "bookOpacity" | "bookYOffset">) {
   const opacity = 0.6;
+  const yOffset = bookYOffset ?? 0;
   const seeds = useMemo<BookSeed[]>(() => {
     const palette = ["#241f1a", "#3a2a20", "#4a3225", "#2f2820"];
     return Array.from({ length: bookCount }, (_, i) => ({
       radius: 1.6 + Math.random() * 1.6,
-      height: (Math.random() - 0.5) * 2.2,
+      height: yOffset + (Math.random() - 0.5) * 2.2,
       speed: 0.12 + Math.random() * 0.1,
       spin: (Math.random() > 0.5 ? 1 : -1) * (0.3 + Math.random() * 0.3),
       color: palette[i % palette.length],
       coverUrl: coverUrls && coverUrls.length ? coverUrls[i % coverUrls.length] : undefined,
     }));
-  }, [bookCount, coverUrls]);
+  }, [bookCount, coverUrls, yOffset]);
 
   return (
     <>
@@ -220,7 +236,7 @@ function Scene({
       <directionalLight position={[2, 3, 4]} intensity={0.8} color="#f6dfa0" />
       <Starfield count={starCount} opacity={starOpacity ?? opacity} avoidCenterX={avoidCenterX} />
       {seeds.map((seed, i) => (
-        <FlyingBook key={i} seed={seed} opacity={opacity} />
+        <FlyingBook key={i} seed={seed} opacity={bookOpacity ?? opacity} />
       ))}
     </>
   );
@@ -235,6 +251,8 @@ export function Scene3DBackground({
   starCount = 90,
   avoidCenterX,
   starOpacity,
+  bookOpacity,
+  bookYOffset,
 }: Props) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -245,6 +263,8 @@ export function Scene3DBackground({
           starCount={starCount}
           avoidCenterX={avoidCenterX}
           starOpacity={starOpacity}
+          bookOpacity={bookOpacity}
+          bookYOffset={bookYOffset}
         />
       </Canvas>
     </View>
