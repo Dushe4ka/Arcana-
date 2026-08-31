@@ -5,11 +5,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.errors import register_exception_handlers
-from app.routers import auth, catalog, characters, play, scenes, stories, wallet
+from app.routers import auth, catalog, characters, favorites, play, scenes, stories, wallet
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 access_logger = logging.getLogger("arcana.http")
 
 app = FastAPI(title="Arcana API")
@@ -46,3 +44,4 @@ app.include_router(characters.router, prefix="/api")
 app.include_router(scenes.router, prefix="/api")
 app.include_router(play.router, prefix="/api")
 app.include_router(wallet.router, prefix="/api")
+app.include_router(favorites.router, prefix="/api")
