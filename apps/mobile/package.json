@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@arcana/shared": "workspace:*",
+    "@expo-google-fonts/playfair-display": "^0.4.2",
     "@react-native-masked-view/masked-view": "0.3.2",
     "@react-three/fiber": "9.7.0",
     "expo": "~54.0.0",

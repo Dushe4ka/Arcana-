@@ -14,7 +14,7 @@ import {
 
 import { GlassSurface } from "./GlassSurface";
 import { MagicDust } from "./MagicDust";
-import { colors, radius } from "../lib/theme";
+import { colors, fonts, radius } from "../lib/theme";
 import { t } from "../lib/locale";
 import type { SaveSlotListItem, StorySummary } from "../lib/types";
 
@@ -344,8 +344,8 @@ const styles = StyleSheet.create({
   },
   heading: {
     color: colors.text,
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 17,
+    fontFamily: fonts.displaySemiBold,
     letterSpacing: 0.3,
     textAlign: "center",
   },
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 5,
   },
-  title: { color: colors.text, fontSize: 16, fontWeight: "700" },
+  title: { color: colors.text, fontSize: 18, fontFamily: fonts.displayBold },
   subtitle: { color: colors.textMuted, fontSize: 13 },
   readButton: {
     borderRadius: radius.lg,

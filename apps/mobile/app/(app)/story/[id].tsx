@@ -9,7 +9,7 @@ import type { StoryGenre } from "@arcana/shared";
 import { GlassSurface } from "../../../components/GlassSurface";
 import { apiRequest, ApiError } from "../../../lib/api";
 import { t } from "../../../lib/locale";
-import { colors, homeGradient, radius } from "../../../lib/theme";
+import { colors, fonts, homeGradient, radius } from "../../../lib/theme";
 import type { ChapterSummary, PlayView, StoryDetail } from "../../../lib/types";
 
 const DEFAULT_SLOT_INDEX = 1;
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1.2,
   },
-  title: { color: colors.text, fontSize: 26, fontWeight: "700" },
+  title: { color: colors.text, fontSize: 28, fontFamily: fonts.displayBold },
   description: { color: colors.textMuted, fontSize: 14, lineHeight: 20, marginTop: 4 },
   season: { marginTop: 26, gap: 12 },
   seasonTitle: { color: colors.text, fontSize: 15, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 },

@@ -36,3 +36,14 @@ export const radius = {
  * scoped to the home screen background only (not `colors.background`, which
  * stays the near-black tone every other screen uses). */
 export const homeGradient = ["#241a15", "#6f5348", "#9c7768", "#6a4d3f", "#201712"] as const;
+
+/** ui-ux-pro-max's "Classic Elegant" pairing (Playfair Display + Inter),
+ * matching this brief's premium-romantic mood - loaded via useFonts() in
+ * useBootProgress, applied only to headline-scale titles (16px+). Small
+ * captions stay on the system font: Playfair's hairlines get illegible
+ * below that size. Body copy stays on the system font too for now - only
+ * the display face changed in this pass. */
+export const fonts = {
+  displaySemiBold: "PlayfairDisplay_600SemiBold",
+  displayBold: "PlayfairDisplay_700Bold",
+};
