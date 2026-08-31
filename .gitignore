@@ -49,3 +49,6 @@ __pycache__/
 
 # Uploads (local dev storage)
 apps/api/uploads/
+
+# Stray local browser save, not project content
+Claude Code чат аркана .webarchive
