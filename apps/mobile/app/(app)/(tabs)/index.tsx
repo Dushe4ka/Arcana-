@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   LayoutChangeEvent,
   Pressable,
   RefreshControl,
@@ -24,7 +23,7 @@ import { LibraryShelf } from "../../../components/LibraryShelf";
 import { apiRequest, ApiError } from "../../../lib/api";
 import { useAuthStore } from "../../../lib/auth-store";
 import { useFavoritesStore } from "../../../lib/favorites-store";
-import { colors, homeGradient, radius } from "../../../lib/theme";
+import { colors, fonts, homeGradient, radius } from "../../../lib/theme";
 import { useWalletStore } from "../../../lib/wallet-store";
 import type { SaveSlotListItem, StorySummary } from "../../../lib/types";
 
@@ -49,6 +48,7 @@ export default function CatalogScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeGenre, setActiveGenre] = useState<StoryGenre>(STORY_GENRES[0]);
+  const [activeSection, setActiveSection] = useState<"library" | "cinema">("library");
 
   const scrollRef = useRef<ScrollView>(null);
   const shelfOffsets = useRef<Partial<Record<StoryGenre, { y: number; height: number }>>>({});
@@ -173,83 +173,67 @@ export default function CatalogScreen() {
         <ContinueSection stories={stories} slotByStoryId={slotByStoryId} onOpen={openCarouselStory} />
 
         <View style={styles.libraryHeading}>
-          <View style={styles.libraryTitleRow}>
-            <Text style={styles.libraryTitle}>Библиотека</Text>
-            <Pressable
-              hitSlop={8}
-              onPress={() => Alert.alert("Библиотека", "Управление библиотекой пока не готово. Загляните позже.")}
-            >
-              <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
+          <View style={styles.sectionTabs}>
+            <Pressable onPress={() => setActiveSection("library")} hitSlop={6}>
+              <Text style={[styles.sectionTab, activeSection !== "library" && styles.sectionTabInactive]}>
+                Библиотека
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => setActiveSection("cinema")} hitSlop={6}>
+              <Text style={[styles.sectionTab, activeSection !== "cinema" && styles.sectionTabInactive]}>
+                Кинозал
+              </Text>
             </Pressable>
           </View>
-          <Pressable
-            hitSlop={6}
-            onPress={() => Alert.alert("Библиотека", "Полный каталог пока не готов. Загляните позже.")}
-          >
-            <View style={styles.showAll}>
-              <Text style={styles.showAllText}>Показать все</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-            </View>
-          </Pressable>
         </View>
 
-        <GenreTabs active={activeGenre} onSelect={onSelectGenre} />
+        {activeSection === "library" ? (
+          <>
+            <GenreTabs active={activeGenre} onSelect={onSelectGenre} />
 
-        <View
-          style={styles.shelves}
-          onLayout={(e) => {
-            shelvesTop.current = e.nativeEvent.layout.y;
-          }}
-        >
-          <LibraryShelf
-            label="Продолжить чтение"
-            stories={continueStories}
-            onPressStory={openStory}
-            showBadge={false}
-          />
-          <LibraryShelf
-            label="Избранное"
-            stories={favoriteStories}
-            onPressStory={openStory}
-            showBadge={false}
-          />
-
-          {STORY_GENRES.map((genre) => (
-            <View key={genre} onLayout={onShelfLayout(genre)}>
-              <LibraryShelf label={GENRE_LABELS[genre]} stories={byGenre[genre]} onPressStory={openStory} />
-            </View>
-          ))}
-        </View>
-
-        {stories.length === 0 && !error ? (
-          <Text style={styles.empty}>Пока нет опубликованных историй</Text>
-        ) : null}
-
-        <View style={styles.libraryHeading}>
-          <View style={styles.libraryTitleRow}>
-            <Text style={styles.libraryTitle}>Кинозал</Text>
-            <Pressable
-              hitSlop={8}
-              onPress={() => Alert.alert("Кинозал", "Мини-сериалы пока готовятся. Загляните позже.")}
+            <View
+              style={styles.shelves}
+              onLayout={(e) => {
+                shelvesTop.current = e.nativeEvent.layout.y;
+              }}
             >
-              <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
-            </Pressable>
-          </View>
-          <Pressable
-            hitSlop={6}
-            onPress={() => Alert.alert("Кинозал", "Мини-сериалы пока готовятся. Загляните позже.")}
-          >
-            <View style={styles.showAll}>
-              <Text style={styles.showAllText}>Показать все</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-            </View>
-          </Pressable>
-        </View>
+              <LibraryShelf
+                label="Продолжить чтение"
+                category="continue"
+                stories={continueStories}
+                onPressStory={openStory}
+                showBadge={false}
+              />
+              <LibraryShelf
+                label="Избранное"
+                category="favorites"
+                stories={favoriteStories}
+                onPressStory={openStory}
+                showBadge={false}
+              />
 
-        <GlassSurface style={styles.cinemaComingSoon} intensity={25}>
-          <Ionicons name="film-outline" size={22} color={colors.accentMuted} />
-          <Text style={styles.cinemaComingSoonText}>Скоро здесь появятся мини-сериалы</Text>
-        </GlassSurface>
+              {STORY_GENRES.map((genre) => (
+                <View key={genre} onLayout={onShelfLayout(genre)}>
+                  <LibraryShelf
+                    label={GENRE_LABELS[genre]}
+                    category={genre}
+                    stories={byGenre[genre]}
+                    onPressStory={openStory}
+                  />
+                </View>
+              ))}
+            </View>
+
+            {stories.length === 0 && !error ? (
+              <Text style={styles.empty}>Пока нет опубликованных историй</Text>
+            ) : null}
+          </>
+        ) : (
+          <GlassSurface style={styles.cinemaComingSoon} intensity={25}>
+            <Ionicons name="film-outline" size={22} color={colors.accentMuted} />
+            <Text style={styles.cinemaComingSoonText}>Скоро здесь появятся мини-сериалы</Text>
+          </GlassSurface>
+        )}
       </ScrollView>
     </View>
   );
@@ -266,10 +250,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  libraryTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  libraryTitle: { color: colors.text, fontSize: 21, fontWeight: "700", letterSpacing: 0.2 },
-  showAll: { flexDirection: "row", alignItems: "center", gap: 2 },
-  showAllText: { color: colors.textMuted, fontSize: 13, fontWeight: "600" },
+  sectionTabs: { flexDirection: "row", alignItems: "center", gap: 18 },
+  sectionTab: { color: colors.text, fontSize: 22, fontFamily: fonts.displayBold, letterSpacing: 0.2 },
+  sectionTabInactive: { color: colors.textMuted, opacity: 0.85 },
   shelves: { gap: 32 },
   empty: { color: colors.textMuted, textAlign: "center", marginTop: 20 },
   cinemaComingSoon: {

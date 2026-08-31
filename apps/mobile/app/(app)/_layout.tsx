@@ -25,6 +25,8 @@ export default function AppLayout() {
       {/* headerShown: false - the redesigned screen has its own full-bleed
           cover-photo hero and a translucent custom back button. */}
       <Stack.Screen name="story/[id]" options={{ headerShown: false }} />
+      {/* Same reasoning as story/[id] - its own back button, no native header. */}
+      <Stack.Screen name="library/[category]" options={{ headerShown: false }} />
     </Stack>
   );
 }

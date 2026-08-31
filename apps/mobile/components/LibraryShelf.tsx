@@ -1,8 +1,9 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
 import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { ShelfBookCard } from "./ShelfBookCard";
-import { colors } from "../lib/theme";
+import { colors, fonts } from "../lib/theme";
 import { t } from "../lib/locale";
 import type { StorySummary } from "../lib/types";
 
@@ -12,11 +13,14 @@ import type { StorySummary } from "../lib/types";
  * reference. */
 export function LibraryShelf({
   label,
+  category,
   stories,
   onPressStory,
   showBadge = true,
 }: {
   label: string;
+  /** Route param for "Показать все" - app/(app)/library/[category].tsx. */
+  category: string;
   stories: StorySummary[];
   onPressStory: (story: StorySummary) => void;
   /** "Продолжить чтение"/"Избранное" aren't about recency, so they skip the
@@ -37,10 +41,7 @@ export function LibraryShelf({
     <View style={styles.section}>
       <View style={styles.headingRow}>
         <Text style={styles.label}>{label}</Text>
-        <Pressable
-          hitSlop={6}
-          onPress={() => Alert.alert(label, "Полный список этого жанра пока не готов. Загляните позже.")}
-        >
+        <Pressable hitSlop={6} onPress={() => router.push(`/(app)/library/${category}`)}>
           <View style={styles.showAll}>
             <Text style={styles.showAllText}>Показать все</Text>
             <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
@@ -76,8 +77,8 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.text,
-    fontSize: 17,
-    fontWeight: "700",
+    fontSize: 18,
+    fontFamily: fonts.displaySemiBold,
   },
   showAll: {
     flexDirection: "row",
