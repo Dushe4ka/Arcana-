@@ -13,6 +13,9 @@ import { colors } from "../lib/theme";
 // as the exact same brand moment, just without the form.
 const HERO_ASPECT = 1152 / 1536;
 const LOGO_TOP_FRACTION = 0.82;
+// Nudges the wordmark down a bit further than the login screen's copy of
+// this layout - loading-screen-only, not shared with login.tsx.
+const LOGO_TOP_NUDGE = 20;
 
 /** App-boot screen shown while useBootProgress() restores the session and
  * warms the login screen's own assets. No inputs, no 3D scene (see
@@ -30,7 +33,7 @@ export function LoadingScreen({ progress }: { progress: Animated.Value }) {
   const insets = useSafeAreaInsets();
   const heroHeight = screenWidth / HERO_ASPECT;
   const logoWidth = screenWidth * 0.78;
-  const logoTop = insets.top + heroHeight * LOGO_TOP_FRACTION - 14;
+  const logoTop = insets.top + heroHeight * LOGO_TOP_FRACTION - 14 + LOGO_TOP_NUDGE;
   const logoBottom = logoTop + logoWidth / LOGO_ASPECT;
   const barTopFromBottom = insets.bottom + 20 + BAR_CONTENT_HEIGHT;
 
@@ -76,7 +79,7 @@ export function LoadingScreen({ progress }: { progress: Animated.Value }) {
         pointerEvents="none"
       />
 
-      <View style={[styles.logoWrap, { top: insets.top + heroHeight * LOGO_TOP_FRACTION - 14 }]} pointerEvents="none">
+      <View style={[styles.logoWrap, { top: logoTop }]} pointerEvents="none">
         <ShimmerLogo width={screenWidth * 0.78} />
       </View>
 

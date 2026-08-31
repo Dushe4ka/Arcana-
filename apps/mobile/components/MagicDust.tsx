@@ -3,9 +3,17 @@ import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from "react-nat
 
 import { colors } from "../lib/theme";
 
-const COUNT = 22;
+const COUNT = 42;
 
-type Speck = { left: number; top: number; size: number; duration: number; delay: number; gold: boolean };
+type Speck = {
+  left: number;
+  top: number;
+  size: number;
+  duration: number;
+  delay: number;
+  gold: boolean;
+  bright: boolean;
+};
 
 // Deterministic scatter (not Math.random on every render) so specks don't
 // relocate on re-render, but still look hand-sprinkled rather than gridded.
@@ -14,35 +22,42 @@ function makeSpeck(i: number): Speck {
     const x = Math.sin(i * 12.9898 + n * 78.233) * 43758.5453;
     return x - Math.floor(x);
   };
+  // A minority of "bright" motes - bigger, glowing, catching the light -
+  // mixed with many small quiet ones, the way dust only really shows up
+  // where a flashlight beam actually hits it.
+  const bright = rand(7) > 0.76;
   return {
     left: 2 + rand(1) * 96,
     // Concentrated around the card band (not the full heading-to-info
     // span), so the dust reads as clinging to the flying books rather than
     // filling the whole section.
-    top: 8 + rand(2) * 82,
-    size: 1.5 + rand(3) * 2.5,
-    duration: 1400 + rand(4) * 1600,
-    delay: rand(5) * 2000,
-    gold: rand(6) > 0.25,
+    top: 6 + rand(2) * 84,
+    size: bright ? 3 + rand(3) * 3.5 : 1.2 + rand(3) * 1.8,
+    duration: 1200 + rand(4) * 1800,
+    delay: rand(5) * 2400,
+    gold: rand(6) > 0.2,
+    bright,
   };
 }
 
 function DustSpeck({ speck, reduceMotion }: { speck: Speck; reduceMotion: boolean }) {
-  const twinkle = useRef(new Animated.Value(0.15)).current;
+  const peak = speck.bright ? 1 : 0.6;
+  const twinkle = useRef(new Animated.Value(peak * 0.2)).current;
+  const color = speck.gold ? colors.accent : colors.text;
 
   useEffect(() => {
     if (reduceMotion) return;
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(twinkle, {
-          toValue: 0.9,
+          toValue: peak,
           duration: speck.duration,
           delay: speck.delay,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(twinkle, {
-          toValue: 0.1,
+          toValue: peak * 0.15,
           duration: speck.duration,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
@@ -51,7 +66,7 @@ function DustSpeck({ speck, reduceMotion }: { speck: Speck; reduceMotion: boolea
     );
     loop.start();
     return () => loop.stop();
-  }, [reduceMotion, speck, twinkle]);
+  }, [reduceMotion, speck, twinkle, peak]);
 
   return (
     <Animated.View
@@ -63,18 +78,24 @@ function DustSpeck({ speck, reduceMotion }: { speck: Speck; reduceMotion: boolea
           width: speck.size,
           height: speck.size,
           borderRadius: speck.size,
-          backgroundColor: speck.gold ? colors.accent : colors.text,
-          opacity: reduceMotion ? 0.35 : twinkle,
+          backgroundColor: color,
+          opacity: reduceMotion ? peak * 0.5 : twinkle,
+        },
+        speck.bright && {
+          shadowColor: color,
+          shadowOpacity: 0.9,
+          shadowRadius: speck.size * 1.8,
+          shadowOffset: { width: 0, height: 0 },
         },
       ]}
     />
   );
 }
 
-/** Quiet magic dust around the flying-books carousel: small twinkling
- * specks, no comet heads, no trails, no wandering flight paths - just an
- * ambient shimmer that reads as highlighting the books rather than its own
- * animated cast of characters. */
+/** Magic dust around the flying-books carousel: many small twinkling
+ * specks, a handful bigger and glowing - the "flashlight through the dark"
+ * look, where most dust stays faint and only a few motes really catch the
+ * light. No comet heads, no trails, no wandering flight paths. */
 export function MagicDust() {
   const [reduceMotion, setReduceMotion] = useState(false);
   const specks = useRef(Array.from({ length: COUNT }, (_, i) => makeSpeck(i))).current;
