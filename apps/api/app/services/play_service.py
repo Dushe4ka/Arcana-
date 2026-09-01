@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.engine.condition_engine import evaluate_condition_group
+from app.engine.condition_engine import evaluate_condition_group, variable_lookup_key
 from app.models.content import Chapter, Character, ChoiceOption, SceneNode
 from app.models.player import PlayerChapterUnlock, SaveSlot
 from app.schemas.common import Condition, Effect
@@ -14,6 +14,7 @@ from app.schemas.content import (
     EffectNodeData,
 )
 from app.services import variables_service, wallet_service
+from app.services.variables_service import VariableContext
 
 MAX_AUTO_TRAVERSAL_STEPS = 100
 # v1: flat award every time a chapter's END node is reached, including replays - no
@@ -197,13 +198,13 @@ async def _resolve_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
 
 
 async def _build_dialogue_view(
-    db: AsyncSession, node_id, data: DialogueNodeData, slot: SaveSlot, context
+    db: AsyncSession, node_id, data: DialogueNodeData, slot: SaveSlot, context: VariableContext
 ) -> dict:
     story_id = str(slot.story_id)
     characters = await _get_character_summaries(db, story_id)
 
     speaker = characters.get(data.speaker_character_id) if data.speaker_character_id else None
-    staged = await _resolve_staged_characters(db, story_id, data.staged)
+    staged = await _resolve_staged_characters(db, story_id, data.staged, context)
 
     # A background persists across nodes until a node explicitly sets a new one - authors
     # only need to set it where it changes, not repeat it on every dialogue node.
@@ -274,21 +275,35 @@ async def _build_choice_view(
     }
 
 
-async def _resolve_staged_characters(db: AsyncSession, story_id: str, staged: list) -> list[dict]:
+async def _resolve_staged_characters(
+    db: AsyncSession, story_id: str, staged: list, context: VariableContext
+) -> list[dict]:
     if not staged:
         return []
     characters = await _get_character_summaries(db, story_id, with_sprites=True)
+    values = context.as_value_map()
 
     result = []
     for s in staged:
         character = characters.get(s.character_id)
         sprites = character.get("sprites", {}) if character else {}
+
+        # Outfit/wardrobe: if this story defines an "outfit" variable scoped to this
+        # character, the sprite key becomes "{outfit}_{expression}" (e.g. "dress_smile") so
+        # an earlier wardrobe choice is reflected automatically in every later scene, without
+        # the author re-picking a sprite per node. Falls back to the plain expression key for
+        # characters that don't use a wardrobe at all.
+        outfit = values.get(variable_lookup_key("outfit", s.character_id))
+        sprite_url = sprites.get(f"{outfit}_{s.sprite}") if outfit else None
+        if sprite_url is None:
+            sprite_url = sprites.get(s.sprite)
+
         result.append(
             {
                 "characterId": s.character_id,
                 "name": character["name"] if character else {"ru": "?"},
                 "nameColor": character["nameColor"] if character else "#FFFFFF",
-                "spriteUrl": sprites.get(s.sprite),
+                "spriteUrl": sprite_url,
                 "position": s.position,
             }
         )
