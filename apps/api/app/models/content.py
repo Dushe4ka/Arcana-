@@ -85,6 +85,10 @@ class SceneNode(Base, UUIDPKMixin, TimestampMixin):
     order: Mapped[int] = mapped_column(Integer, default=0)
     # Type-specific payload, shape validated by Pydantic schemas (see app/schemas/content.py).
     data: Mapped[dict] = mapped_column(JSONB)
+    # Graph editor node position (admin panel only) - null until an author drags the node at
+    # least once. Never read by the reading engine.
+    canvas_x: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    canvas_y: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     chapter: Mapped[Chapter] = relationship(back_populates="nodes", foreign_keys=[chapter_id])
     choice_options: Mapped[list["ChoiceOption"]] = relationship(

@@ -192,10 +192,15 @@ SCENE_NODE_DATA_SCHEMA_BY_TYPE = {
 
 class SceneNodeUpdateInput(CamelModel):
     """Partial update: order can move, and `data` is re-validated server-side against the
-    node's existing type."""
+    node's existing type. canvas_x/canvas_y follow the same "omitted = don't touch" rule as
+    order/data - there's no way to distinguish "clear the position" from "didn't send it" in
+    this scheme, which is fine here since a node's position is never meant to go back to
+    unset once the author has placed it on the canvas."""
 
     order: int | None = Field(default=None, ge=0)
     data: dict | None = None
+    canvas_x: int | None = None
+    canvas_y: int | None = None
 
 
 # --- Choice options ------------------------------------------------------------------------

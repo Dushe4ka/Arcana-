@@ -35,6 +35,8 @@ class SceneNodeOut(ORMModel):
     type: str
     order: int
     data: dict[str, Any]
+    canvas_x: int | None
+    canvas_y: int | None
     choice_options: list[ChoiceOptionOut] = []
 
 

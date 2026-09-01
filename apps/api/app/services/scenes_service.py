@@ -59,9 +59,13 @@ async def update_node(db: AsyncSession, node_id: str, data: SceneNodeUpdateInput
 
     if data.order is not None:
         node.order = data.order
+    if data.canvas_x is not None:
+        node.canvas_x = data.canvas_x
+    if data.canvas_y is not None:
+        node.canvas_y = data.canvas_y
     node.data = new_data
     await db.commit()
-    await db.refresh(node)
+    await db.refresh(node, ["choice_options"])
     return node
 
 
