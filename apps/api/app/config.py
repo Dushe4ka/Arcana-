@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     port: int = 4000
     environment: str = "development"
     uploads_dir: str = "./uploads"
+    # Used to build absolute URLs for uploaded files (e.g. "{public_base_url}/uploads/x.png")
+    # returned to the admin panel/mobile app - override in .env once deployed somewhere real.
+    public_base_url: str = "http://localhost:4000"
 
 
 settings = Settings()
