@@ -184,7 +184,7 @@ async def _resolve_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
 
         if node.type.value == "DIALOGUE":
             data = DialogueNodeData.model_validate(node.data)
-            return await _build_dialogue_view(db, node.id, data, slot)
+            return await _build_dialogue_view(db, node.id, data, slot, context)
 
         # CHOICE
         options = list(
@@ -196,12 +196,24 @@ async def _resolve_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
         return await _build_choice_view(db, node.id, data, options, context, slot)
 
 
-async def _build_dialogue_view(db: AsyncSession, node_id, data: DialogueNodeData, slot: SaveSlot) -> dict:
+async def _build_dialogue_view(
+    db: AsyncSession, node_id, data: DialogueNodeData, slot: SaveSlot, context
+) -> dict:
     story_id = str(slot.story_id)
     characters = await _get_character_summaries(db, story_id)
 
     speaker = characters.get(data.speaker_character_id) if data.speaker_character_id else None
     staged = await _resolve_staged_characters(db, story_id, data.staged)
+
+    # A background persists across nodes until a node explicitly sets a new one - authors
+    # only need to set it where it changes, not repeat it on every dialogue node.
+    background_url = data.background_image_url
+    if background_url:
+        if slot.current_background_url != background_url:
+            slot.current_background_url = background_url
+            await db.commit()
+    else:
+        background_url = slot.current_background_url
 
     return {
         "type": "DIALOGUE",
@@ -215,7 +227,7 @@ async def _build_dialogue_view(db: AsyncSession, node_id, data: DialogueNodeData
         else None,
         "text": data.text.model_dump(),
         "isThought": data.is_thought,
-        "backgroundImageUrl": data.background_image_url,
+        "backgroundImageUrl": background_url,
         "staged": staged,
         "canAdvance": bool(data.next_node_id),
         "saveSlot": _to_save_slot_dto(slot),

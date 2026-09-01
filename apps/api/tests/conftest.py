@@ -123,6 +123,7 @@ async def make_chapter(db_session: AsyncSession):
         )
         db_session.add(chapter)
         await db_session.flush()
+        await db_session.refresh(chapter)
         chapter.season = season
         return chapter
 
