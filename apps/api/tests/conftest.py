@@ -10,6 +10,11 @@ running pytest, e.g.:
 Never point it at the arcana_dev database you use for manual testing. The db_session fixture
 drops and recreates the entire schema at the start of every single test, ensuring each test
 runs against a fresh schema that matches the current models, regardless of prior test runs.
+
+As a safety net against DATABASE_URL accidentally resolving to a real/dev database (e.g. via
+.env), the db_session fixture refuses to run - and exits the whole test session immediately -
+unless the resolved database name ends in "_test". If you ever see that exit message, it means
+the guard did its job: point DATABASE_URL at a disposable *_test database and try again.
 """
 
 import uuid
@@ -33,6 +38,14 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """One test = one transaction, rolled back at the end - tests never see each other's
     data, and nothing that happens here (including explicit .commit() calls made by the
     code under test) survives past the test."""
+    db_url = settings.database_url
+    db_name = db_url.rsplit("/", 1)[-1].split("?")[0]
+    if not db_name.endswith("_test"):
+        pytest.exit(
+            f"Refusing to run tests against {db_name!r} - point DATABASE_URL at a *_test database "
+            "(e.g. arcana_test), never the dev database."
+        )
+
     engine = create_async_engine(settings.database_url, echo=False)
 
     # Drop and recreate schema - ensures every test starts fresh with the current models,

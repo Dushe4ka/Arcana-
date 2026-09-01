@@ -127,8 +127,11 @@ def _resolve_staged(graph: _ChapterGraph, staged: list, values: dict[str, Variab
 
 
 def _walk(
-    graph: _ChapterGraph, start_node_id: str, values: dict[str, VariableScalar]
-) -> tuple[dict, dict[str, VariableScalar]]:
+    graph: _ChapterGraph,
+    start_node_id: str,
+    values: dict[str, VariableScalar],
+    background_url: str | None,
+) -> tuple[dict, dict[str, VariableScalar], str | None]:
     node_id = start_node_id
     steps = 0
 
@@ -159,10 +162,12 @@ def _walk(
             continue
 
         if node.type.value == "END":
-            return {"type": "END", "nodeId": str(node.id)}, values
+            return {"type": "END", "nodeId": str(node.id)}, values, background_url
 
         if node.type.value == "DIALOGUE":
             data = DialogueNodeData.model_validate(node.data)
+            if data.background_image_url:
+                background_url = data.background_image_url
             speaker = (
                 graph.characters_by_id.get(data.speaker_character_id) if data.speaker_character_id else None
             )
@@ -174,12 +179,12 @@ def _walk(
                 else None,
                 "text": data.text.model_dump(),
                 "isThought": data.is_thought,
-                "backgroundImageUrl": data.background_image_url,
+                "backgroundImageUrl": background_url,
                 "staged": _resolve_staged(graph, data.staged, values),
                 "canAdvance": bool(data.next_node_id),
                 "nextNodeId": data.next_node_id,
             }
-            return view, values
+            return view, values, background_url
 
         # CHOICE
         data = ChoiceNodeData.model_validate(node.data)
@@ -206,22 +211,33 @@ def _walk(
             "prompt": data.prompt.model_dump() if data.prompt else None,
             "options": visible_options,
         }
-        return view, values
+        return view, values, background_url
 
 
-async def resolve(db: AsyncSession, chapter_id: str, node_id: str | None, values: dict) -> tuple[dict, dict]:
+async def resolve(
+    db: AsyncSession,
+    chapter_id: str,
+    node_id: str | None,
+    values: dict,
+    background_url: str | None = None,
+) -> tuple[dict, dict, str | None]:
     chapter, graph = await _load_graph(db, chapter_id)
     start_node_id = node_id or (str(chapter.entry_node_id) if chapter.entry_node_id else None)
     if not start_node_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "У главы не задана начальная сцена")
 
     merged_values = {**graph.default_values(), **values}
-    return _walk(graph, start_node_id, merged_values)
+    return _walk(graph, start_node_id, merged_values, background_url)
 
 
 async def choose(
-    db: AsyncSession, chapter_id: str, node_id: str, choice_option_id: str, values: dict
-) -> tuple[dict, dict]:
+    db: AsyncSession,
+    chapter_id: str,
+    node_id: str,
+    choice_option_id: str,
+    values: dict,
+    background_url: str | None = None,
+) -> tuple[dict, dict, str | None]:
     chapter, graph = await _load_graph(db, chapter_id)
     node = _get_node(graph, node_id)
     if node.type.value != "CHOICE":
@@ -240,4 +256,4 @@ async def choose(
     if not option.next_node_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "У этого варианта нет продолжения")
 
-    return _walk(graph, str(option.next_node_id), next_values)
+    return _walk(graph, str(option.next_node_id), next_values, background_url)

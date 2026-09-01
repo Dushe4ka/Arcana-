@@ -35,7 +35,7 @@ async def create_node(db: AsyncSession, data: SceneNodeCreateInput) -> SceneNode
     )
     db.add(node)
     await db.commit()
-    await db.refresh(node)
+    await db.refresh(node, ["choice_options"])
     return node
 
 

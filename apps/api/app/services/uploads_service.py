@@ -31,6 +31,9 @@ async def save_upload(file: UploadFile, focal_x: float | None = None, focal_y: f
         if value is not None and not (0 <= value <= 1):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{name} должен быть в диапазоне 0-1")
 
+    if file.size is not None and file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Файл слишком большой (максимум 10 МБ)")
+
     contents = await file.read()
     if not contents:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Пустой файл")
