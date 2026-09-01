@@ -52,3 +52,6 @@ apps/api/uploads/
 
 # Stray local browser save, not project content
 Claude Code чат аркана .webarchive
+
+# Subagent-driven-development scratch workspace (ledgers, briefs, review packages)
+.superpowers/
