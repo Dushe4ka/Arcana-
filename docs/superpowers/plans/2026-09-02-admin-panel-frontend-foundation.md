@@ -1283,6 +1283,14 @@ In `apps/admin/app/(app)/stories/[id]/page.tsx`, add the import:
 import { ImageUpload } from "@/components/ImageUpload";
 ```
 
+Also extend the existing `@arcana/shared` import line (currently
+`import { seasonCreateSchema, chapterCreateSchema } from "@arcana/shared";`, added in Task 5)
+to include `characterCreateSchema`, needed by `CharactersSection` in Step 3 below:
+
+```tsx
+import { seasonCreateSchema, chapterCreateSchema, characterCreateSchema } from "@arcana/shared";
+```
+
 Add a handler inside `StoryDetailPage` (alongside `onDeleteStory`/`onTogglePublish`):
 
 ```tsx
