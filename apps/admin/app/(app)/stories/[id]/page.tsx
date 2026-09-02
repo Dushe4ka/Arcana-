@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { seasonCreateSchema, chapterCreateSchema } from "@arcana/shared";
+import { seasonCreateSchema, chapterCreateSchema, characterCreateSchema } from "@arcana/shared";
 
 import { apiRequest, ApiError } from "@/lib/api";
+import { ImageUpload } from "@/components/ImageUpload";
 import type { StoryDetailOut } from "@/lib/types";
 
 export default function StoryDetailPage() {
@@ -49,6 +50,15 @@ export default function StoryDetailPage() {
     }
   };
 
+  const onCoverUploaded = async (url: string) => {
+    try {
+      await apiRequest(`/admin/stories/${id}`, { method: "PATCH", body: JSON.stringify({ coverImageUrl: url }) });
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить обложку");
+    }
+  };
+
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!story) return <p className="text-neutral-500">Загрузка…</p>;
 
@@ -71,7 +81,11 @@ export default function StoryDetailPage() {
         </div>
       </div>
 
+      <ImageUpload label="Обложка" currentUrl={story.coverImageUrl} onUploaded={onCoverUploaded} />
+
       <SeasonsSection storyId={story.id} seasons={story.seasons} onChanged={load} />
+
+      <CharactersSection storyId={story.id} characters={story.characters} onChanged={load} />
     </div>
   );
 }
@@ -249,5 +263,90 @@ function ChaptersList({ season, onChanged }: { season: StoryDetailOut["seasons"]
         {season.chapters.length === 0 && <li className="py-2 text-sm text-neutral-500">Пока нет глав</li>}
       </ul>
     </div>
+  );
+}
+
+function CharactersSection({
+  storyId,
+  characters,
+  onChanged,
+}: {
+  storyId: string;
+  characters: StoryDetailOut["characters"];
+  onChanged: () => void;
+}) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [nameRu, setNameRu] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const onCreateCharacter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = characterCreateSchema.safeParse({ storyId, name: { ru: nameRu } });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Проверьте данные");
+      return;
+    }
+    try {
+      await apiRequest("/admin/characters", { method: "POST", body: JSON.stringify(parsed.data) });
+      setShowCreate(false);
+      setNameRu("");
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось создать персонажа");
+    }
+  };
+
+  const onSpriteUploaded = async (character: StoryDetailOut["characters"][number], expression: string, url: string) => {
+    const sprites = { ...character.sprites, [expression]: url };
+    try {
+      await apiRequest(`/admin/characters/${character.id}`, { method: "PATCH", body: JSON.stringify({ sprites }) });
+      onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить спрайт");
+    }
+  };
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold">Персонажи</h2>
+        <button onClick={() => setShowCreate((v) => !v)} className="text-sm text-neutral-600 underline">
+          {showCreate ? "Отмена" : "Добавить персонажа"}
+        </button>
+      </div>
+
+      {showCreate && (
+        <form onSubmit={onCreateCharacter} className="flex items-end gap-3 rounded border border-neutral-200 bg-white p-4">
+          <div className="flex-1">
+            <label className="block text-sm text-neutral-600">Имя</label>
+            <input
+              value={nameRu}
+              onChange={(e) => setNameRu(e.target.value)}
+              className="mt-1 w-full rounded border border-neutral-300 px-3 py-2"
+            />
+          </div>
+          <button type="submit" className="rounded bg-neutral-900 px-3 py-2 text-sm text-white">
+            Создать
+          </button>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </form>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        {characters.map((character) => (
+          <div key={character.id} className="rounded border border-neutral-200 bg-white p-4">
+            <p className="mb-2 font-medium" style={{ color: character.nameColor }}>
+              {character.name.ru}
+            </p>
+            <ImageUpload
+              label='Спрайт "neutral"'
+              currentUrl={character.sprites.neutral}
+              onUploaded={(url) => onSpriteUploaded(character, "neutral", url)}
+            />
+          </div>
+        ))}
+        {characters.length === 0 && <p className="text-sm text-neutral-500">Пока нет персонажей</p>}
+      </div>
+    </section>
   );
 }
