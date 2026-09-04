@@ -163,9 +163,13 @@ export const sceneNodeDataSchemaByType = {
   END: endNodeDataSchema,
 } as const;
 
-/** Partial update: order can move, and `data` is re-validated server-side against the node's existing type. */
+/** Partial update: order can move, and `data` is re-validated server-side against the node's
+ * existing type. canvasX/canvasY are the graph editor's node position - omitted means
+ * "don't touch", matching the backend's own update semantics. */
 export const sceneNodeUpdateSchema = z.object({
   order: z.number().int().min(0).optional(),
   data: z.unknown().optional(),
+  canvasX: z.number().int().optional(),
+  canvasY: z.number().int().optional(),
 });
 export type SceneNodeUpdateInput = z.infer<typeof sceneNodeUpdateSchema>;
