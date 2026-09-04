@@ -63,7 +63,7 @@ Backend — на Python, потому что так попросил владе�
    ```
 5. Запустите сервер в режиме разработки:
    ```
-   uvicorn app.main:app --reload --port 4000
+   uvicorn app.main:asgi_app --reload --port 4000
    ```
    API будет доступен на `http://localhost:4000/api`, автодокументация (Swagger) — на
    `http://localhost:4000/docs`.

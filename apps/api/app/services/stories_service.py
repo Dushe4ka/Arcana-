@@ -98,7 +98,7 @@ async def create_season(db: AsyncSession, data: SeasonCreateInput) -> Season:
     season = Season(**data.model_dump())
     db.add(season)
     await db.commit()
-    await db.refresh(season)
+    await db.refresh(season, ["chapters"])
     return season
 
 

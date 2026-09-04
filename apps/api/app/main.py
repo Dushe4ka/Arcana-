@@ -53,3 +53,24 @@ app.include_router(wallet.router, prefix="/api")
 app.include_router(favorites.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
 app.include_router(preview.router, prefix="/api")
+
+# `app` must stay a real FastAPI instance - tests (see tests/conftest.py) rely on
+# `app.dependency_overrides`, which only exists on a `FastAPI` instance, not on the
+# `CORSMiddleware`-wrapped ASGI callable below.
+#
+# The `CORSMiddleware` registered above via `app.add_middleware(...)` still never sees
+# a genuinely unhandled exception that happens during FastAPI's own response-model
+# serialization: that failure point is *outside* even the catch-all `@app.exception_handler
+# (Exception)` registered in `register_exception_handlers`, and is caught only by
+# Starlette's `ServerErrorMiddleware`, which is structurally always the outermost layer,
+# above anything added via `app.add_middleware()`. Starlette's own docs recommend wrapping
+# the whole ASGI app externally with CORSMiddleware to guarantee CORS headers even on that
+# class of error: https://www.starlette.io/middleware/#cors-headers-on-error-responses
+#
+# So `asgi_app` (not `app`) is what should actually be served - see CLAUDE.md.
+asgi_app = CORSMiddleware(
+    app=app,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

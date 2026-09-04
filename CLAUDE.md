@@ -93,10 +93,18 @@ pip install -r requirements-dev.txt   # включает requirements.txt + pyte
 cp .env.example .env                  # DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, ...
 alembic upgrade head                  # применить миграции
 python seed.py                        # создать admin-пользователя + играбельную демо-историю
-uvicorn app.main:app --reload --port 4000
+uvicorn app.main:asgi_app --reload --port 4000
 ```
 
 API: `http://localhost:4000/api`, автодокументация (Swagger): `http://localhost:4000/docs`.
+
+`app.main` экспортирует два ASGI-объекта: `app` — сам `FastAPI()`-инстанс (нужен тестам,
+`tests/conftest.py` использует `app.dependency_overrides`), и `asgi_app` — `app`, обёрнутый
+снаружи в `CORSMiddleware`. Обслуживать (`uvicorn`, деплой) нужно именно `asgi_app`: только
+внешняя обёртка гарантирует заголовок `Access-Control-Allow-Origin` даже на ответах, которые
+падают на уровне `ServerErrorMiddleware` (структурно всегда самый внешний слой, выше любого
+`app.add_middleware(...)`) — например, при ошибке сериализации `response_model`, минуя даже
+catch-all хендлер в `app/core/errors.py`.
 После сидирования: `admin@arcana.app` / `ChangeMe123!` (обязательно сменить перед продакшном).
 
 ```bash
