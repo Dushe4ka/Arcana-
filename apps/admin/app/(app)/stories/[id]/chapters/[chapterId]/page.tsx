@@ -7,6 +7,7 @@ import { apiRequest, ApiError } from "@/lib/api";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
 import type { ChapterOut, CharacterOut, SceneNodeOut } from "@/lib/types";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
+import { SceneGraphView } from "@/components/SceneGraphView";
 
 export default function SceneEditorPage() {
   const { id: storyId, chapterId } = useParams<{ id: string; chapterId: string }>();
@@ -15,6 +16,7 @@ export default function SceneEditorPage() {
   const [characters, setCharacters] = useState<CharacterOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "graph">("list");
 
   const load = async () => {
     try {
@@ -116,50 +118,70 @@ export default function SceneEditorPage() {
         ))}
       </div>
 
-      <ul className="divide-y divide-neutral-200 rounded border border-neutral-200 bg-white">
-        {nodes
-          .slice()
-          .sort((a, b) => a.order - b.order)
-          .map((node) => (
-            <li key={node.id}>
-              <div className="flex items-center justify-between px-4 py-3">
-                <button
-                  onClick={() => setSelectedNodeId(selectedNodeId === node.id ? null : node.id)}
-                  className="flex-1 text-left"
-                >
-                  <span className="mr-2 rounded bg-neutral-100 px-2 py-0.5 text-xs">
-                    {NODE_TYPE_LABELS[node.type]}
-                  </span>
-                  <span className="text-sm">{nodeSummary(node)}</span>
-                  {chapter.entryNodeId === node.id && (
-                    <span className="ml-2 text-xs text-green-700">начальная сцена</span>
-                  )}
-                </button>
-                <div className="flex gap-3 text-xs">
-                  {chapter.entryNodeId !== node.id && (
-                    <button onClick={() => onSetEntryNode(node.id)} className="text-neutral-600 underline">
-                      Сделать начальной
-                    </button>
-                  )}
-                  <button onClick={() => onDeleteNode(node.id)} className="text-red-600 underline">
-                    Удалить
+      <div className="flex gap-2 text-sm">
+        <button
+          onClick={() => setView("list")}
+          className={view === "list" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Список
+        </button>
+        <button
+          onClick={() => setView("graph")}
+          className={view === "graph" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Граф
+        </button>
+      </div>
+
+      {view === "list" && (
+        <ul className="divide-y divide-neutral-200 rounded border border-neutral-200 bg-white">
+          {nodes
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map((node) => (
+              <li key={node.id}>
+                <div className="flex items-center justify-between px-4 py-3">
+                  <button
+                    onClick={() => setSelectedNodeId(selectedNodeId === node.id ? null : node.id)}
+                    className="flex-1 text-left"
+                  >
+                    <span className="mr-2 rounded bg-neutral-100 px-2 py-0.5 text-xs">
+                      {NODE_TYPE_LABELS[node.type]}
+                    </span>
+                    <span className="text-sm">{nodeSummary(node)}</span>
+                    {chapter.entryNodeId === node.id && (
+                      <span className="ml-2 text-xs text-green-700">начальная сцена</span>
+                    )}
                   </button>
+                  <div className="flex gap-3 text-xs">
+                    {chapter.entryNodeId !== node.id && (
+                      <button onClick={() => onSetEntryNode(node.id)} className="text-neutral-600 underline">
+                        Сделать начальной
+                      </button>
+                    )}
+                    <button onClick={() => onDeleteNode(node.id)} className="text-red-600 underline">
+                      Удалить
+                    </button>
+                  </div>
                 </div>
-              </div>
-              {selectedNodeId === node.id && (
-                <div className="border-t border-neutral-100 bg-neutral-50 p-4">
-                  <NodeEditorPanel
-                    node={node}
-                    allNodes={nodes}
-                    characters={characters}
-                    onSaved={load}
-                  />
-                </div>
-              )}
-            </li>
-          ))}
-        {nodes.length === 0 && <li className="px-4 py-3 text-sm text-neutral-500">Пока нет узлов</li>}
-      </ul>
+                {selectedNodeId === node.id && (
+                  <div className="border-t border-neutral-100 bg-neutral-50 p-4">
+                    <NodeEditorPanel
+                      node={node}
+                      allNodes={nodes}
+                      characters={characters}
+                      onSaved={load}
+                    />
+                  </div>
+                )}
+              </li>
+            ))}
+          {nodes.length === 0 && <li className="px-4 py-3 text-sm text-neutral-500">Пока нет узлов</li>}
+        </ul>
+      )}
+      {view === "graph" && (
+        <SceneGraphView nodes={nodes} characters={characters} onNodesChanged={load} />
+      )}
     </div>
   );
 }
