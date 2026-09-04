@@ -6,12 +6,12 @@ import { useParams } from "next/navigation";
 import { apiRequest, ApiError } from "@/lib/api";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
 import type { ChapterOut, CharacterOut, SceneNodeOut } from "@/lib/types";
+import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 
 export default function SceneEditorPage() {
   const { id: storyId, chapterId } = useParams<{ id: string; chapterId: string }>();
   const [chapter, setChapter] = useState<ChapterOut | null>(null);
   const [nodes, setNodes] = useState<SceneNodeOut[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- fetched for Task 3 NodeEditorPanel
   const [characters, setCharacters] = useState<CharacterOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -148,7 +148,12 @@ export default function SceneEditorPage() {
               </div>
               {selectedNodeId === node.id && (
                 <div className="border-t border-neutral-100 bg-neutral-50 p-4">
-                  {/* NodeEditorPanel goes here - added in Task 3 */}
+                  <NodeEditorPanel
+                    node={node}
+                    allNodes={nodes}
+                    characters={characters}
+                    onSaved={load}
+                  />
                 </div>
               )}
             </li>
