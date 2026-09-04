@@ -31,7 +31,7 @@ async def create_node(db: AsyncSession, data: SceneNodeCreateInput) -> SceneNode
         chapter_id=data.chapter_id,
         type=data.type,
         order=data.order,
-        data=data.data.model_dump(),
+        data=data.data.model_dump(by_alias=True),
     )
     db.add(node)
     await db.commit()
@@ -55,7 +55,7 @@ async def update_node(db: AsyncSession, node_id: str, data: SceneNodeUpdateInput
                     "issues": str(exc),
                 },
             ) from exc
-        new_data = validated.model_dump()
+        new_data = validated.model_dump(by_alias=True)
 
     if data.order is not None:
         node.order = data.order
@@ -86,7 +86,11 @@ async def create_choice_option(db: AsyncSession, data: ChoiceOptionCreateInput) 
             "Варианты выбора можно добавлять только к узлам типа CHOICE",
         )
 
-    option = ChoiceOption(**data.model_dump())
+    values = data.model_dump()
+    values["effects"] = [e.model_dump(by_alias=True) for e in data.effects]
+    values["visible_when"] = [c.model_dump(by_alias=True) for c in data.visible_when]
+
+    option = ChoiceOption(**values)
     db.add(option)
     await db.commit()
     await db.refresh(option)
@@ -98,6 +102,10 @@ async def update_choice_option(
 ) -> ChoiceOption:
     option = await _require_choice(db, option_id)
     for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "effects" and data.effects is not None:
+            value = [e.model_dump(by_alias=True) for e in data.effects]
+        elif field == "visible_when" and data.visible_when is not None:
+            value = [c.model_dump(by_alias=True) for c in data.visible_when]
         setattr(option, field, value)
     await db.commit()
     await db.refresh(option)

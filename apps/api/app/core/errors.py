@@ -20,6 +20,11 @@ def _envelope(request: Request, status_code: int, **extra) -> dict:
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        if isinstance(exc.detail, dict):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content=_envelope(request, exc.status_code, **exc.detail),
+            )
         return JSONResponse(
             status_code=exc.status_code,
             content=_envelope(request, exc.status_code, message=exc.detail),
