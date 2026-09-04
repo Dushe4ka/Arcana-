@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
-import type { CharacterOut, SceneNodeOut } from "@/lib/types";
+import type { ChoiceOptionOut, CharacterOut, SceneNodeOut } from "@/lib/types";
 import { EffectRowsEditor, parseValue, type EffectRow } from "./EffectRowsEditor";
 
 function NextNodeSelect({
@@ -67,7 +67,7 @@ export function NodeEditorPanel({
       {node.type === "DIALOGUE" && (
         <DialogueForm node={node} allNodes={allNodes} characters={characters} onSave={save} />
       )}
-      {node.type === "CHOICE" && <ChoiceForm node={node} onSave={save} />}
+      {node.type === "CHOICE" && <ChoiceForm node={node} allNodes={allNodes} onSave={save} onOptionsChanged={onSaved} />}
       {node.type === "CONDITION" && <ConditionForm node={node} allNodes={allNodes} onSave={save} />}
       {node.type === "EFFECT" && <EffectForm node={node} allNodes={allNodes} onSave={save} />}
       {node.type === "END" && <EndForm node={node} onSave={save} />}
@@ -151,27 +151,184 @@ function DialogueForm({
   );
 }
 
-function ChoiceForm({ node, onSave }: { node: SceneNodeOut; onSave: (data: object) => void }) {
+function ChoiceForm({
+  node,
+  allNodes,
+  onSave,
+  onOptionsChanged,
+}: {
+  node: SceneNodeOut;
+  allNodes: SceneNodeOut[];
+  onSave: (data: object) => void;
+  onOptionsChanged: () => void;
+}) {
   const data = node.data as { prompt?: { ru?: string } };
   const [promptRu, setPromptRu] = useState(data.prompt?.ru ?? "");
+  const [showCreateOption, setShowCreateOption] = useState(false);
 
   return (
-    <div className="space-y-2">
-      <div>
+    <div className="space-y-4">
+      <div className="space-y-2">
         <label className="block text-xs text-neutral-600">Подсказка (необязательно)</label>
         <input
           value={promptRu}
           onChange={(e) => setPromptRu(e.target.value)}
           className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
         />
+        <button
+          onClick={() => onSave(promptRu ? { prompt: { ru: promptRu } } : {})}
+          className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
+        >
+          Сохранить
+        </button>
       </div>
-      <button
-        onClick={() => onSave(promptRu ? { prompt: { ru: promptRu } } : {})}
-        className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
-      >
-        Сохранить
-      </button>
-      <p className="text-xs text-neutral-500">Варианты выбора редактируются ниже.</p>
+
+      <div className="space-y-2 border-t border-neutral-200 pt-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-neutral-600">Варианты выбора</span>
+          <button onClick={() => setShowCreateOption((v) => !v)} className="text-xs text-neutral-600 underline">
+            {showCreateOption ? "Отмена" : "+ Добавить вариант"}
+          </button>
+        </div>
+
+        {showCreateOption && (
+          <ChoiceOptionForm
+            nodeId={node.id}
+            allNodes={allNodes}
+            order={node.choiceOptions.length}
+            onSaved={() => {
+              setShowCreateOption(false);
+              onOptionsChanged();
+            }}
+          />
+        )}
+
+        {node.choiceOptions
+          .slice()
+          .sort((a, b) => a.order - b.order)
+          .map((option) => (
+            <ChoiceOptionForm
+              key={option.id}
+              nodeId={node.id}
+              allNodes={allNodes}
+              existing={option}
+              onSaved={onOptionsChanged}
+            />
+          ))}
+        {node.choiceOptions.length === 0 && !showCreateOption && (
+          <p className="text-xs text-neutral-500">Пока нет вариантов</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChoiceOptionForm({
+  nodeId,
+  allNodes,
+  existing,
+  order,
+  onSaved,
+}: {
+  nodeId: string;
+  allNodes: SceneNodeOut[];
+  existing?: ChoiceOptionOut;
+  order?: number;
+  onSaved: () => void;
+}) {
+  const [textRu, setTextRu] = useState(existing?.text.ru ?? "");
+  const [costCurrency, setCostCurrency] = useState<"SOFT" | "HARD" | "">(existing?.costCurrency ?? "");
+  const [costAmount, setCostAmount] = useState(existing?.costAmount ?? 0);
+  const [nextNodeId, setNextNodeId] = useState<string | null>(existing?.nextNodeId ?? null);
+  const [rows, setRows] = useState<EffectRow[]>(
+    (existing?.effects ?? []).map((e) => ({
+      variableKey: e.variableKey,
+      characterId: e.characterId,
+      op: e.op,
+      value: String(e.value),
+    })),
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    const body = {
+      text: { ru: textRu },
+      costCurrency: costCurrency || null,
+      costAmount,
+      nextNodeId,
+      effects: rows.map((r) => ({
+        variableKey: r.variableKey,
+        characterId: r.characterId,
+        op: r.op,
+        value: parseValue(r.value),
+      })),
+    };
+    try {
+      if (existing) {
+        await apiRequest(`/admin/choice-options/${existing.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      } else {
+        await apiRequest("/admin/choice-options", {
+          method: "POST",
+          body: JSON.stringify({ nodeId, order, visibleWhen: [], ...body }),
+        });
+      }
+      setError(null);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить вариант");
+    }
+  };
+
+  const remove = async () => {
+    if (!existing || !confirm("Удалить вариант?")) return;
+    try {
+      await apiRequest(`/admin/choice-options/${existing.id}`, { method: "DELETE" });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось удалить вариант");
+    }
+  };
+
+  return (
+    <div className="space-y-2 rounded border border-neutral-200 p-2">
+      <input
+        value={textRu}
+        onChange={(e) => setTextRu(e.target.value)}
+        placeholder="Текст варианта"
+        className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
+      />
+      <div className="flex items-center gap-2 text-sm">
+        <select
+          value={costCurrency}
+          onChange={(e) => setCostCurrency(e.target.value as "SOFT" | "HARD" | "")}
+          className="rounded border border-neutral-300 px-2 py-1"
+        >
+          <option value="">Бесплатно</option>
+          <option value="SOFT">Монеты</option>
+          <option value="HARD">Кристаллы</option>
+        </select>
+        {costCurrency && (
+          <input
+            type="number"
+            value={costAmount}
+            onChange={(e) => setCostAmount(Number(e.target.value))}
+            className="w-20 rounded border border-neutral-300 px-2 py-1"
+          />
+        )}
+      </div>
+      <NextNodeSelect value={nextNodeId} allNodes={allNodes} excludeNodeId={nodeId} onChange={setNextNodeId} />
+      <EffectRowsEditor rows={rows} onChange={setRows} />
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button onClick={save} className="rounded bg-neutral-900 px-3 py-1 text-xs text-white">
+          Сохранить
+        </button>
+        {existing && (
+          <button onClick={remove} className="text-xs text-red-600 underline">
+            Удалить
+          </button>
+        )}
+      </div>
     </div>
   );
 }
