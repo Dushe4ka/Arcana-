@@ -13,6 +13,7 @@ export default function StoryDetailPage() {
   const router = useRouter();
   const [story, setStory] = useState<StoryDetailOut | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -35,7 +36,7 @@ export default function StoryDetailPage() {
       await apiRequest(`/admin/stories/${id}`, { method: "DELETE" });
       router.replace("/stories");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось удалить историю");
+      setMutationError(err instanceof ApiError ? err.message : "Не удалось удалить историю");
     }
   };
 
@@ -46,7 +47,7 @@ export default function StoryDetailPage() {
       await apiRequest(`/admin/stories/${id}/${action}`, { method: "POST" });
       load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось изменить статус истории");
+      setMutationError(err instanceof ApiError ? err.message : "Не удалось изменить статус истории");
     }
   };
 
@@ -55,7 +56,7 @@ export default function StoryDetailPage() {
       await apiRequest(`/admin/stories/${id}`, { method: "PATCH", body: JSON.stringify({ coverImageUrl: url }) });
       load();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось сохранить обложку");
+      setMutationError(err instanceof ApiError ? err.message : "Не удалось сохранить обложку");
     }
   };
 
@@ -80,6 +81,8 @@ export default function StoryDetailPage() {
           </button>
         </div>
       </div>
+
+      {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
 
       <ImageUpload label="Обложка" currentUrl={story.coverImageUrl} onUploaded={onCoverUploaded} />
 
@@ -278,6 +281,7 @@ function CharactersSection({
   const [showCreate, setShowCreate] = useState(false);
   const [nameRu, setNameRu] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const onCreateCharacter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,9 +304,10 @@ function CharactersSection({
     const sprites = { ...character.sprites, [expression]: url };
     try {
       await apiRequest(`/admin/characters/${character.id}`, { method: "PATCH", body: JSON.stringify({ sprites }) });
+      setUploadError(null);
       onChanged();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Не удалось сохранить спрайт");
+      setUploadError(err instanceof ApiError ? err.message : "Не удалось сохранить спрайт");
     }
   };
 
@@ -331,6 +336,8 @@ function CharactersSection({
           {error && <p className="text-sm text-red-600">{error}</p>}
         </form>
       )}
+
+      {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
 
       <div className="grid grid-cols-2 gap-4">
         {characters.map((character) => (

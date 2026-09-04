@@ -94,24 +94,35 @@ function describeError(err: unknown): string {
   return "Не удалось подключиться к серверу";
 }
 
+let refreshPromise: Promise<string | null> | null = null;
+
+async function doRefresh(): Promise<string | null> {
+  const { refreshToken } = useAuthStore.getState();
+  if (!refreshToken) return null;
+  try {
+    const res = await apiRequest<TokenPair>("/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify({ refreshToken }),
+      auth: false,
+    });
+    window.localStorage.setItem(ACCESS_KEY, res.accessToken);
+    window.localStorage.setItem(REFRESH_KEY, res.refreshToken);
+    useAuthStore.setState({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+    return res.accessToken;
+  } catch {
+    await useAuthStore.getState().logout();
+    return null;
+  }
+}
+
 configureApi({
   getAccessToken: () => useAuthStore.getState().accessToken,
-  onUnauthorized: async () => {
-    const { refreshToken } = useAuthStore.getState();
-    if (!refreshToken) return null;
-    try {
-      const res = await apiRequest<TokenPair>("/auth/refresh", {
-        method: "POST",
-        body: JSON.stringify({ refreshToken }),
-        auth: false,
+  onUnauthorized: () => {
+    if (!refreshPromise) {
+      refreshPromise = doRefresh().finally(() => {
+        refreshPromise = null;
       });
-      window.localStorage.setItem(ACCESS_KEY, res.accessToken);
-      window.localStorage.setItem(REFRESH_KEY, res.refreshToken);
-      useAuthStore.setState({ accessToken: res.accessToken, refreshToken: res.refreshToken });
-      return res.accessToken;
-    } catch {
-      await useAuthStore.getState().logout();
-      return null;
     }
+    return refreshPromise;
   },
 });
