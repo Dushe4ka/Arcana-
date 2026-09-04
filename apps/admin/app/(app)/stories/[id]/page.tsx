@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { seasonCreateSchema, chapterCreateSchema, characterCreateSchema } from "@arcana/shared";
 
@@ -258,9 +259,14 @@ function ChaptersList({ season, onChanged }: { season: StoryDetailOut["seasons"]
             <span>
               Глава {chapter.index}: {chapter.title.ru} · {chapter.status}
             </span>
-            <button onClick={() => onToggleChapterPublish(chapter)} className="text-neutral-600 underline">
-              {chapter.status === "PUBLISHED" ? "Снять с публикации" : "Опубликовать"}
-            </button>
+            <div className="flex gap-3">
+              <Link href={`/stories/${season.storyId}/chapters/${chapter.id}`} className="text-neutral-600 underline">
+                Редактировать содержание
+              </Link>
+              <button onClick={() => onToggleChapterPublish(chapter)} className="text-neutral-600 underline">
+                {chapter.status === "PUBLISHED" ? "Снять с публикации" : "Опубликовать"}
+              </button>
+            </div>
           </li>
         ))}
         {season.chapters.length === 0 && <li className="py-2 text-sm text-neutral-500">Пока нет глав</li>}

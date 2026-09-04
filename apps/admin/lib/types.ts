@@ -42,3 +42,26 @@ export type StoryDetailOut = StoryOut & {
   seasons: SeasonOut[];
   characters: CharacterOut[];
 };
+
+export type ChoiceOptionOut = {
+  id: string;
+  nodeId: string;
+  order: number;
+  text: LocalizedText;
+  costCurrency: "SOFT" | "HARD" | null;
+  costAmount: number;
+  visibleWhen: Array<{ variableKey: string; characterId: string | null; operator: string; value: number | boolean | string }>;
+  effects: Array<{ variableKey: string; characterId: string | null; op: string; value: number | boolean | string }>;
+  nextNodeId: string | null;
+};
+
+export type SceneNodeOut = {
+  id: string;
+  chapterId: string;
+  type: "DIALOGUE" | "CHOICE" | "CONDITION" | "EFFECT" | "END";
+  order: number;
+  data: Record<string, unknown>;
+  canvasX: number | null;
+  canvasY: number | null;
+  choiceOptions: ChoiceOptionOut[];
+};
