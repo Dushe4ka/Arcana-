@@ -361,7 +361,7 @@ function ConditionForm({
   return (
     <div className="space-y-2">
       <label className="block text-xs text-neutral-600">Условия (все должны выполняться)</label>
-      <EffectRowsEditor rows={rows} onChange={setRows} />
+      <EffectRowsEditor rows={rows} onChange={setRows} mode="condition" />
       <div>
         <label className="block text-xs text-neutral-600">Если верно</label>
         <NextNodeSelect value={thenNodeId} allNodes={allNodes} excludeNodeId={node.id} onChange={setThenNodeId} />

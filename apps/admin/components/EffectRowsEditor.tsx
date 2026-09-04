@@ -2,7 +2,8 @@
 
 type Row = { variableKey: string; characterId: string | null; op: string; value: string };
 
-const OPS = ["SET", "INCREMENT", "DECREMENT"];
+const EFFECT_OPS = ["SET", "INCREMENT", "DECREMENT"];
+const CONDITION_OPS = ["EQ", "NEQ", "GT", "GTE", "LT", "LTE"];
 
 /** Parses a free-text value input into the number/boolean/string the backend's
  * `VariableScalar` union expects - "true"/"false" become booleans, anything that parses as
@@ -19,10 +20,13 @@ function parseValue(raw: string): number | boolean | string {
 export function EffectRowsEditor({
   rows,
   onChange,
+  mode = "effect",
 }: {
   rows: Row[];
   onChange: (rows: Row[]) => void;
+  mode?: "effect" | "condition";
 }) {
+  const ops = mode === "condition" ? CONDITION_OPS : EFFECT_OPS;
   const update = (index: number, patch: Partial<Row>) => {
     onChange(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   };
@@ -42,7 +46,7 @@ export function EffectRowsEditor({
             onChange={(e) => update(i, { op: e.target.value })}
             className="rounded border border-neutral-300 px-2 py-1"
           >
-            {OPS.map((op) => (
+            {ops.map((op) => (
               <option key={op} value={op}>
                 {op}
               </option>
@@ -65,10 +69,10 @@ export function EffectRowsEditor({
       ))}
       <button
         type="button"
-        onClick={() => onChange([...rows, { variableKey: "", characterId: null, op: "SET", value: "" }])}
+        onClick={() => onChange([...rows, { variableKey: "", characterId: null, op: ops[0], value: "" }])}
         className="text-sm text-neutral-600 underline"
       >
-        + Добавить эффект
+        {mode === "condition" ? "+ Добавить условие" : "+ Добавить эффект"}
       </button>
     </div>
   );

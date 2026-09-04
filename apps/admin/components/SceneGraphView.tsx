@@ -42,7 +42,14 @@ function edgesForNode(node: SceneNodeOut): Edge[] {
   }
   if (node.type === "CHOICE") {
     for (const option of node.choiceOptions) {
-      addEdge(option.nextNodeId, option.text.ru.slice(0, 20));
+      if (typeof option.nextNodeId === "string" && option.nextNodeId) {
+        edges.push({
+          id: `${node.id}-${option.id}`,
+          source: node.id,
+          target: option.nextNodeId,
+          label: option.text.ru.slice(0, 20),
+        });
+      }
     }
   }
   return edges;
@@ -131,6 +138,7 @@ export function SceneGraphView({
             </button>
           </div>
           <NodeEditorPanel
+            key={selectedNode.id}
             node={selectedNode}
             allNodes={sceneNodes}
             characters={characters}
