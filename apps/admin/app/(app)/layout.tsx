@@ -33,7 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-full">
-      <nav className="flex items-center justify-between border-b border-neutral-300 bg-white px-6 py-3">
+      <nav className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-300 bg-white px-6 py-3">
         <div className="flex items-center gap-6">
           <span className="font-semibold">Arcana Admin</span>
           <Link href="/stories" className="text-sm text-neutral-600 hover:text-neutral-900">
