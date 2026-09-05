@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
@@ -94,14 +95,31 @@ export default function SceneEditorPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">
-          Глава {chapter.index}: {chapter.title.ru}
-        </h1>
-        <p className="text-sm text-neutral-500">
-          {chapter.status}
-          {!chapter.entryNodeId && " · начальная сцена не задана"}
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">
+            Глава {chapter.index}: {chapter.title.ru}
+          </h1>
+          <p className="text-sm text-neutral-500">
+            {chapter.status}
+            {!chapter.entryNodeId && " · начальная сцена не задана"}
+          </p>
+        </div>
+        {chapter.entryNodeId ? (
+          <Link
+            href={`/stories/${storyId}/chapters/${chapterId}/preview`}
+            className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm"
+          >
+            ▶ Превью
+          </Link>
+        ) : (
+          <span
+            title="Сначала задайте начальную сцену"
+            className="cursor-not-allowed rounded border border-neutral-200 px-3 py-1.5 text-sm text-neutral-400"
+          >
+            ▶ Превью
+          </span>
+        )}
       </div>
 
       {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
@@ -154,6 +172,12 @@ export default function SceneEditorPage() {
                     )}
                   </button>
                   <div className="flex gap-3 text-xs">
+                    <Link
+                      href={`/stories/${storyId}/chapters/${chapterId}/preview?nodeId=${node.id}`}
+                      className="text-neutral-600 underline"
+                    >
+                      Превью отсюда
+                    </Link>
                     {chapter.entryNodeId !== node.id && (
                       <button onClick={() => onSetEntryNode(node.id)} className="text-neutral-600 underline">
                         Сделать начальной

@@ -12,6 +12,8 @@ import {
   applyNodeChanges,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 
 import { apiRequest } from "@/lib/api";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
@@ -65,6 +67,7 @@ export function SceneGraphView({
   onNodesChanged: () => void;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const { id: storyId, chapterId } = useParams<{ id: string; chapterId: string }>();
 
   const flowNodes = useMemo<Node[]>(
     () =>
@@ -133,9 +136,17 @@ export function SceneGraphView({
         <div className="w-80 shrink-0 overflow-y-auto rounded border border-neutral-200 bg-white p-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-medium">{NODE_TYPE_LABELS[selectedNode.type]}</span>
-            <button onClick={() => setSelectedNodeId(null)} className="text-xs text-neutral-500 underline">
-              Закрыть
-            </button>
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/stories/${storyId}/chapters/${chapterId}/preview?nodeId=${selectedNode.id}`}
+                className="text-xs text-neutral-600 underline"
+              >
+                ▶ Превью отсюда
+              </Link>
+              <button onClick={() => setSelectedNodeId(null)} className="text-xs text-neutral-500 underline">
+                Закрыть
+              </button>
+            </div>
           </div>
           <NodeEditorPanel
             key={selectedNode.id}
