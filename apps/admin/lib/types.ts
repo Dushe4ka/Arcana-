@@ -38,9 +38,22 @@ export type CharacterOut = {
   sprites: Record<string, string>;
 };
 
+export type VariableDefinitionOut = {
+  id: string;
+  storyId: string;
+  key: string;
+  label: LocalizedText;
+  type: "NUMBER" | "BOOLEAN" | "STRING";
+  defaultValue: number | boolean | string;
+  characterId: string | null;
+  minValue: number | null;
+  maxValue: number | null;
+};
+
 export type StoryDetailOut = StoryOut & {
   seasons: SeasonOut[];
   characters: CharacterOut[];
+  variableDefinitions: VariableDefinitionOut[];
 };
 
 export type ChoiceOptionOut = {

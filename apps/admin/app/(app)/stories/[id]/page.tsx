@@ -7,7 +7,8 @@ import { seasonCreateSchema, chapterCreateSchema, characterCreateSchema } from "
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { ImageUpload } from "@/components/ImageUpload";
-import type { StoryDetailOut } from "@/lib/types";
+import { WardrobeMatrix } from "@/components/WardrobeMatrix";
+import type { StoryDetailOut, VariableDefinitionOut } from "@/lib/types";
 
 export default function StoryDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -89,7 +90,12 @@ export default function StoryDetailPage() {
 
       <SeasonsSection storyId={story.id} seasons={story.seasons} onChanged={load} />
 
-      <CharactersSection storyId={story.id} characters={story.characters} onChanged={load} />
+      <CharactersSection
+        storyId={story.id}
+        characters={story.characters}
+        variableDefinitions={story.variableDefinitions}
+        onChanged={load}
+      />
     </div>
   );
 }
@@ -278,16 +284,17 @@ function ChaptersList({ season, onChanged }: { season: StoryDetailOut["seasons"]
 function CharactersSection({
   storyId,
   characters,
+  variableDefinitions,
   onChanged,
 }: {
   storyId: string;
   characters: StoryDetailOut["characters"];
+  variableDefinitions: VariableDefinitionOut[];
   onChanged: () => void;
 }) {
   const [showCreate, setShowCreate] = useState(false);
   const [nameRu, setNameRu] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const onCreateCharacter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -303,17 +310,6 @@ function CharactersSection({
       onChanged();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось создать персонажа");
-    }
-  };
-
-  const onSpriteUploaded = async (character: StoryDetailOut["characters"][number], expression: string, url: string) => {
-    const sprites = { ...character.sprites, [expression]: url };
-    try {
-      await apiRequest(`/admin/characters/${character.id}`, { method: "PATCH", body: JSON.stringify({ sprites }) });
-      setUploadError(null);
-      onChanged();
-    } catch (err) {
-      setUploadError(err instanceof ApiError ? err.message : "Не удалось сохранить спрайт");
     }
   };
 
@@ -343,18 +339,17 @@ function CharactersSection({
         </form>
       )}
 
-      {uploadError && <p className="text-sm text-red-600">{uploadError}</p>}
-
-      <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-4">
         {characters.map((character) => (
           <div key={character.id} className="rounded border border-neutral-200 bg-white p-4">
             <p className="mb-2 font-medium" style={{ color: character.nameColor }}>
               {character.name.ru}
             </p>
-            <ImageUpload
-              label='Спрайт "neutral"'
-              currentUrl={character.sprites.neutral}
-              onUploaded={(url) => onSpriteUploaded(character, "neutral", url)}
+            <WardrobeMatrix
+              character={character}
+              storyId={storyId}
+              variableDefinitions={variableDefinitions}
+              onChanged={onChanged}
             />
           </div>
         ))}
