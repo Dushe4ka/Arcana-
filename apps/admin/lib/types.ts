@@ -65,3 +65,57 @@ export type SceneNodeOut = {
   canvasY: number | null;
   choiceOptions: ChoiceOptionOut[];
 };
+
+export type CharacterTag = {
+  id: string;
+  name: LocalizedText;
+  nameColor: string;
+};
+
+export type StagedCharacterView = {
+  characterId: string;
+  name: LocalizedText;
+  nameColor: string;
+  spriteUrl: string | null;
+  position: "left" | "center" | "right";
+};
+
+export type PreviewDialogueView = {
+  type: "DIALOGUE";
+  nodeId: string;
+  speaker: CharacterTag | null;
+  text: LocalizedText;
+  isThought: boolean;
+  backgroundImageUrl: string | null;
+  staged: StagedCharacterView[];
+  canAdvance: boolean;
+  nextNodeId: string | null;
+};
+
+export type PreviewChoiceOptionView = {
+  id: string;
+  text: LocalizedText;
+  costCurrency: "SOFT" | "HARD" | null;
+  costAmount: number;
+  affordable: boolean;
+};
+
+export type PreviewChoiceView = {
+  type: "CHOICE";
+  nodeId: string;
+  prompt: LocalizedText | null;
+  options: PreviewChoiceOptionView[];
+};
+
+export type PreviewEndView = {
+  type: "END";
+  nodeId: string;
+};
+
+export type PreviewNodeView = PreviewDialogueView | PreviewChoiceView | PreviewEndView;
+
+export type PreviewStepOut = {
+  view: PreviewNodeView;
+  backgroundUrl: string | null;
+  values: Record<string, number | boolean | string>;
+};
