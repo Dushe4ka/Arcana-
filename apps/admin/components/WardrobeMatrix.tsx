@@ -55,6 +55,7 @@ export function WardrobeMatrix({
   const [newPoseName, setNewPoseName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [addingOutfit, setAddingOutfit] = useState(false);
+  const [locallyCreatedOutfitVariable, setLocallyCreatedOutfitVariable] = useState(false);
 
   const outfits = [
     BASE_OUTFIT,
@@ -63,9 +64,14 @@ export function WardrobeMatrix({
   ];
   const poses = Array.from(new Set([...derived.poses, ...extraPoses]));
 
-  const hasOutfitVariable = variableDefinitions.some(
-    (v) => v.key === "outfit" && v.characterId === character.id,
-  );
+  // `variableDefinitions` only reflects the parent's last-known state, which updates
+  // asynchronously via `onChanged()`'s refetch - `locallyCreatedOutfitVariable` covers the
+  // window between a successful POST and that refetch landing, so a second `onAddOutfit` call
+  // in that window sees the variable as already existing instead of firing a duplicate POST
+  // that would hit the backend's `(story_id, key, character_id)` unique constraint.
+  const hasOutfitVariable =
+    locallyCreatedOutfitVariable ||
+    variableDefinitions.some((v) => v.key === "outfit" && v.characterId === character.id);
 
   const validateName = (name: string, existing: string[]): string | null => {
     if (!SLUG_RE.test(name)) {
@@ -102,6 +108,10 @@ export function WardrobeMatrix({
             characterId: character.id,
           }),
         });
+        // Set synchronously, before `onChanged()` (fire-and-forget) below - so a rapid second
+        // `onAddOutfit` call sees `hasOutfitVariable` as true immediately, without waiting for
+        // the parent's async refetch to land.
+        setLocallyCreatedOutfitVariable(true);
       }
       setExtraOutfits((prev) => [...prev, name]);
       setNewOutfitName("");
