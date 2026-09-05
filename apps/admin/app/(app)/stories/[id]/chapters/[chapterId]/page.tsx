@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 
 import { apiRequest, ApiError } from "@/lib/api";
+import { previewHref } from "@/lib/preview";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
 import type { ChapterOut, CharacterOut, SceneNodeOut } from "@/lib/types";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
@@ -107,7 +108,7 @@ export default function SceneEditorPage() {
         </div>
         {chapter.entryNodeId ? (
           <Link
-            href={`/stories/${storyId}/chapters/${chapterId}/preview`}
+            href={previewHref(storyId, chapterId)}
             className="rounded border border-neutral-300 bg-white px-3 py-1.5 text-sm"
           >
             ▶ Превью
@@ -173,7 +174,7 @@ export default function SceneEditorPage() {
                   </button>
                   <div className="flex gap-3 text-xs">
                     <Link
-                      href={`/stories/${storyId}/chapters/${chapterId}/preview?nodeId=${node.id}`}
+                      href={previewHref(storyId, chapterId, node.id)}
                       className="text-neutral-600 underline"
                     >
                       Превью отсюда
@@ -204,7 +205,7 @@ export default function SceneEditorPage() {
         </ul>
       )}
       {view === "graph" && (
-        <SceneGraphView nodes={nodes} characters={characters} onNodesChanged={load} />
+        <SceneGraphView nodes={nodes} characters={characters} storyId={storyId} chapterId={chapterId} onNodesChanged={load} />
       )}
     </div>
   );

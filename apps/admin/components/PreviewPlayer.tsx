@@ -7,16 +7,9 @@ import type {
   CharacterOut,
   PreviewChoiceView,
   PreviewDialogueView,
-  PreviewNodeView,
   PreviewStepOut,
   StagedCharacterView,
 } from "@/lib/types";
-
-type Snapshot = {
-  view: PreviewNodeView;
-  backgroundUrl: string | null;
-  values: Record<string, number | boolean | string>;
-};
 
 export function PreviewPlayer({
   chapterId,
@@ -27,7 +20,7 @@ export function PreviewPlayer({
   startNodeId: string | null;
   characters: CharacterOut[];
 }) {
-  const [history, setHistory] = useState<Snapshot[]>([]);
+  const [history, setHistory] = useState<PreviewStepOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showVariables, setShowVariables] = useState(false);
@@ -44,7 +37,7 @@ export function PreviewPlayer({
         method: "POST",
         body: JSON.stringify({ nodeId: startNodeId, backgroundUrl: null, values: {} }),
       });
-      setHistory([{ view: data.view, backgroundUrl: data.backgroundUrl, values: data.values }]);
+      setHistory([data]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось загрузить превью");
     } finally {
@@ -70,7 +63,7 @@ export function PreviewPlayer({
           values: current.values,
         }),
       });
-      setHistory((h) => [...h, { view: data.view, backgroundUrl: data.backgroundUrl, values: data.values }]);
+      setHistory((h) => [...h, data]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось перейти дальше");
     } finally {
@@ -92,7 +85,7 @@ export function PreviewPlayer({
           values: current.values,
         }),
       });
-      setHistory((h) => [...h, { view: data.view, backgroundUrl: data.backgroundUrl, values: data.values }]);
+      setHistory((h) => [...h, data]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось выполнить выбор");
     } finally {

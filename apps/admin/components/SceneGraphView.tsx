@@ -13,9 +13,9 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 
 import { apiRequest } from "@/lib/api";
+import { previewHref } from "@/lib/preview";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
 import type { CharacterOut, SceneNodeOut } from "@/lib/types";
 import { NodeEditorPanel } from "./NodeEditorPanel";
@@ -60,14 +60,17 @@ function edgesForNode(node: SceneNodeOut): Edge[] {
 export function SceneGraphView({
   nodes: sceneNodes,
   characters,
+  storyId,
+  chapterId,
   onNodesChanged,
 }: {
   nodes: SceneNodeOut[];
   characters: CharacterOut[];
+  storyId: string;
+  chapterId: string;
   onNodesChanged: () => void;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const { id: storyId, chapterId } = useParams<{ id: string; chapterId: string }>();
 
   const flowNodes = useMemo<Node[]>(
     () =>
@@ -138,7 +141,7 @@ export function SceneGraphView({
             <span className="text-sm font-medium">{NODE_TYPE_LABELS[selectedNode.type]}</span>
             <div className="flex items-center gap-3">
               <Link
-                href={`/stories/${storyId}/chapters/${chapterId}/preview?nodeId=${selectedNode.id}`}
+                href={previewHref(storyId, chapterId, selectedNode.id)}
                 className="text-xs text-neutral-600 underline"
               >
                 ▶ Превью отсюда
