@@ -65,6 +65,8 @@ async def create_purchase(db: AsyncSession, user_id: str, package_id: str) -> st
             return_url=return_url,
             idempotence_key=str(purchase.id),
         )
+        payment_id = payment["id"]
+        confirmation_url = payment["confirmation"]["confirmation_url"]
     except Exception as exc:
         purchase.status = PurchaseStatus.FAILED
         await db.commit()
@@ -72,14 +74,16 @@ async def create_purchase(db: AsyncSession, user_id: str, package_id: str) -> st
             status.HTTP_502_BAD_GATEWAY, "Не удалось начать оплату, попробуйте позже"
         ) from exc
 
-    purchase.provider_payment_id = payment["id"]
+    purchase.provider_payment_id = payment_id
     await db.commit()
 
-    return payment["confirmation"]["confirmation_url"]
+    return confirmation_url
 
 
 async def handle_webhook(db: AsyncSession, payment_id: str) -> None:
-    purchase = await db.scalar(select(Purchase).where(Purchase.provider_payment_id == payment_id))
+    purchase = await db.scalar(
+        select(Purchase).where(Purchase.provider_payment_id == payment_id).with_for_update()
+    )
     if not purchase:
         # Unknown payment id - could be a replayed/stray webhook, or one from a different
         # environment. Nothing to do; the caller (the router) is responsible for still

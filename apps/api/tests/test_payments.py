@@ -93,3 +93,22 @@ async def test_webhook_ignores_unknown_payment_id(client):
         json={"event": "payment.succeeded", "object": {"id": "never-created"}},
     )
     assert response.status_code == 204  # must still ack, not 500, so YooKassa stops retrying
+
+
+async def test_create_purchase_returns_502_on_malformed_yookassa_response(
+    client, make_user, auth_headers, monkeypatch, db_session
+):
+    # Missing the "confirmation" key entirely - a malformed-but-200 response from YooKassa.
+    create_payment = AsyncMock(return_value={"id": "yk-malformed"})
+    monkeypatch.setattr(payments_service.yookassa_client, "create_payment", create_payment)
+
+    user = await make_user("malformed-response@example.com")
+    response = await client.post(
+        "/api/me/purchases", json={"packageId": "hard_100"}, headers=auth_headers(user)
+    )
+    assert response.status_code == 502
+
+    purchase = await db_session.scalar(
+        select(Purchase).where(Purchase.user_id == user.id).order_by(Purchase.created_at.desc())
+    )
+    assert purchase.status == PurchaseStatus.FAILED
