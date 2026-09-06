@@ -8,7 +8,19 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.core.errors import register_exception_handlers
-from app.routers import auth, catalog, characters, favorites, play, preview, scenes, stories, uploads, wallet
+from app.routers import (
+    auth,
+    catalog,
+    characters,
+    favorites,
+    play,
+    preview,
+    scenes,
+    stats,
+    stories,
+    uploads,
+    wallet,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 access_logger = logging.getLogger("arcana.http")
@@ -51,6 +63,7 @@ app.include_router(scenes.router, prefix="/api")
 app.include_router(play.router, prefix="/api")
 app.include_router(wallet.router, prefix="/api")
 app.include_router(favorites.router, prefix="/api")
+app.include_router(stats.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
 app.include_router(preview.router, prefix="/api")
 
