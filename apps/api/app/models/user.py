@@ -40,6 +40,22 @@ class RefreshToken(Base, UUIDPKMixin):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class CabinetLinkToken(Base, UUIDPKMixin):
+    """A one-time, 60-second-lived code that lets the mobile app hand a logged-in user a
+    session on the player cabinet site without a second login form - see the design spec's
+    "Поток входа" section. Stored hashed, exactly like RefreshToken above."""
+
+    __tablename__ = "cabinet_link_tokens"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class PlayerProfile(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "player_profiles"
 

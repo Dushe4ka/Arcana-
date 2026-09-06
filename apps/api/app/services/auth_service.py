@@ -1,5 +1,6 @@
 import hashlib
-from datetime import UTC, datetime
+import secrets
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -14,7 +15,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.economy import DailyRewardState, Wallet
-from app.models.user import PlayerProfile, RefreshToken, User
+from app.models.user import CabinetLinkToken, PlayerProfile, RefreshToken, User
 from app.schemas.auth import (
     AuthResponse,
     LoginInput,
@@ -25,6 +26,7 @@ from app.schemas.auth import (
 
 STARTING_ENERGY = 20
 STARTING_SOFT_CURRENCY = 100
+CABINET_LINK_TOKEN_TTL_SECONDS = 60
 
 
 def _hash_token(token: str) -> str:
@@ -62,6 +64,39 @@ async def _issue_token_pair(db: AsyncSession, user: User) -> TokenPair:
     await db.commit()
 
     return TokenPair(access_token=access_token, refresh_token=refresh_token)
+
+
+async def create_cabinet_link_token(db: AsyncSession, user_id: str) -> str:
+    code = secrets.token_urlsafe(32)
+    expires_at = datetime.now(UTC) + timedelta(seconds=CABINET_LINK_TOKEN_TTL_SECONDS)
+    db.add(
+        CabinetLinkToken(
+            user_id=user_id,
+            token_hash=_hash_token(code),
+            expires_at=expires_at,
+        )
+    )
+    await db.commit()
+    return code
+
+
+async def exchange_cabinet_link_token(db: AsyncSession, code: str) -> AuthResponse:
+    token_hash = _hash_token(code)
+    stored = await db.scalar(select(CabinetLinkToken).where(CabinetLinkToken.token_hash == token_hash))
+    now = datetime.now(UTC)
+    if not stored or stored.used_at is not None or stored.expires_at < now:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ссылка недействительна или уже использована")
+
+    stored.used_at = now
+    await db.commit()
+
+    user = await db.get(User, stored.user_id)
+    if not user:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Пользователь не найден")
+
+    display_name = await _get_display_name(db, user.id)
+    tokens = await _issue_token_pair(db, user)
+    return AuthResponse(user=_to_public_user(user, display_name), **tokens.model_dump())
 
 
 async def register(db: AsyncSession, data: RegisterInput) -> AuthResponse:

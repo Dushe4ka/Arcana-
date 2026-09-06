@@ -5,6 +5,8 @@ from app.core.deps import AuthenticatedUser, get_current_user
 from app.database import get_db
 from app.schemas.auth import (
     AuthResponse,
+    CabinetExchangeInput,
+    CabinetLinkTokenOut,
     LoginInput,
     PublicUser,
     RefreshTokenInput,
@@ -42,3 +44,17 @@ async def me(
     db: AsyncSession = Depends(get_db),
 ):
     return await auth_service.me(db, user.user_id)
+
+
+@router.post("/cabinet-link-token", response_model=CabinetLinkTokenOut)
+async def cabinet_link_token(
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    code = await auth_service.create_cabinet_link_token(db, user.user_id)
+    return CabinetLinkTokenOut(code=code, expires_in_seconds=auth_service.CABINET_LINK_TOKEN_TTL_SECONDS)
+
+
+@router.post("/cabinet-exchange", response_model=AuthResponse)
+async def cabinet_exchange(body: CabinetExchangeInput, db: AsyncSession = Depends(get_db)):
+    return await auth_service.exchange_cabinet_link_token(db, body.code)

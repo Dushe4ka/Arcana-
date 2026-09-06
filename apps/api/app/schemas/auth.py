@@ -18,6 +18,15 @@ class RefreshTokenInput(CamelModel):
     refresh_token: str = Field(min_length=1)
 
 
+class CabinetExchangeInput(CamelModel):
+    code: str = Field(min_length=1)
+
+
+class CabinetLinkTokenOut(CamelModel):
+    code: str
+    expires_in_seconds: int
+
+
 class PublicUser(CamelModel):
     id: str
     email: str
