@@ -20,6 +20,14 @@ class Settings(BaseSettings):
     # Used to build absolute URLs for uploaded files (e.g. "{public_base_url}/uploads/x.png")
     # returned to the admin panel/mobile app - override in .env once deployed somewhere real.
     public_base_url: str = "http://localhost:4000"
+    # YooKassa merchant credentials - empty by default so existing .env files keep working;
+    # a real purchase attempt fails cleanly with a YooKassa 401 until these are set to real
+    # (or sandbox) values. See https://yookassa.ru/developers/api
+    yookassa_shop_id: str = ""
+    yookassa_secret_key: str = ""
+    # Base URL of the player cabinet site (apps/cabinet, a separate plan) - used to build the
+    # `return_url` YooKassa redirects back to after a payment completes.
+    cabinet_base_url: str = "http://localhost:3100"
 
 
 settings = Settings()

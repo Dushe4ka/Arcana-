@@ -6,8 +6,8 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.enums import CurrencyCode, TransactionType
-from app.models.mixins import UUIDPKMixin, _utcnow
+from app.models.enums import CurrencyCode, PurchaseStatus, TransactionType
+from app.models.mixins import TimestampMixin, UUIDPKMixin, _utcnow
 from app.models.user import User
 
 # Going from level N to N+1 costs LEVEL_XP_STEP * N xp (level 12 -> 13 costs 1200).
@@ -82,3 +82,23 @@ class DailyRewardState(Base, UUIDPKMixin):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     user: Mapped[User] = relationship(back_populates="daily_reward")
+
+
+class Purchase(Base, UUIDPKMixin, TimestampMixin):
+    """One HARD-currency purchase attempt via YooKassa. `provider_payment_id` is unique so a
+    webhook can look up the purchase it's about; `status` starts PENDING and is only ever
+    flipped to COMPLETED by payments_service.handle_webhook after re-confirming the payment's
+    real status with YooKassa's own API (never from the webhook body directly)."""
+
+    __tablename__ = "purchases"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    currency: Mapped[CurrencyCode] = mapped_column()
+    amount: Mapped[int] = mapped_column(Integer)
+    price_rub_kopecks: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(String, default="yookassa")
+    provider_payment_id: Mapped[str] = mapped_column(String, unique=True)
+    status: Mapped[PurchaseStatus] = mapped_column(default=PurchaseStatus.PENDING)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

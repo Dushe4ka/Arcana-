@@ -15,11 +15,13 @@ from app.routers import (
     favorites,
     play,
     preview,
+    purchases,
     scenes,
     stats,
     stories,
     uploads,
     wallet,
+    webhooks,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -66,6 +68,8 @@ app.include_router(favorites.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(uploads.router, prefix="/api")
 app.include_router(preview.router, prefix="/api")
+app.include_router(purchases.router, prefix="/api")
+app.include_router(webhooks.router, prefix="/api")
 
 # `app` must stay a real FastAPI instance - tests (see tests/conftest.py) rely on
 # `app.dependency_overrides`, which only exists on a `FastAPI` instance, not on the

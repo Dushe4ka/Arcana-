@@ -46,3 +46,10 @@ class TransactionType(str, enum.Enum):
     SPEND = "SPEND"
     PURCHASE = "PURCHASE"
     GRANT = "GRANT"
+
+
+class PurchaseStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELED = "CANCELED"

@@ -30,7 +30,9 @@ from app.core.security import create_access_token, hash_password
 from app.database import Base, get_db
 from app.main import app
 from app.models.content import Chapter, Season, Story
+from app.models.economy import Wallet
 from app.models.user import User
+from app.services.auth_service import STARTING_ENERGY, STARTING_SOFT_CURRENCY
 
 
 @pytest_asyncio.fixture
@@ -95,6 +97,11 @@ async def make_user(db_session: AsyncSession):
         db_session.add(user)
         await db_session.flush()
         await db_session.refresh(user)
+        # Mirrors auth_service.register: every real user gets a wallet at creation time, so
+        # tests exercising wallet-touching code paths (spend/grant currency, purchases, ...)
+        # see the same invariant a user created through the actual registration endpoint would.
+        db_session.add(Wallet(user_id=user.id, soft=STARTING_SOFT_CURRENCY, energy=STARTING_ENERGY))
+        await db_session.flush()
         return user
 
     return _make_user
