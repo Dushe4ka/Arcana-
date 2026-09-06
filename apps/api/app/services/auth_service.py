@@ -3,7 +3,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
@@ -67,8 +67,10 @@ async def _issue_token_pair(db: AsyncSession, user: User) -> TokenPair:
 
 
 async def create_cabinet_link_token(db: AsyncSession, user_id: str) -> str:
+    now = datetime.now(UTC)
+    await db.execute(delete(CabinetLinkToken).where(CabinetLinkToken.expires_at < now))
     code = secrets.token_urlsafe(32)
-    expires_at = datetime.now(UTC) + timedelta(seconds=CABINET_LINK_TOKEN_TTL_SECONDS)
+    expires_at = now + timedelta(seconds=CABINET_LINK_TOKEN_TTL_SECONDS)
     db.add(
         CabinetLinkToken(
             user_id=user_id,
@@ -82,7 +84,9 @@ async def create_cabinet_link_token(db: AsyncSession, user_id: str) -> str:
 
 async def exchange_cabinet_link_token(db: AsyncSession, code: str) -> AuthResponse:
     token_hash = _hash_token(code)
-    stored = await db.scalar(select(CabinetLinkToken).where(CabinetLinkToken.token_hash == token_hash))
+    stored = await db.scalar(
+        select(CabinetLinkToken).where(CabinetLinkToken.token_hash == token_hash).with_for_update()
+    )
     now = datetime.now(UTC)
     if not stored or stored.used_at is not None or stored.expires_at < now:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ссылка недействительна или уже использована")

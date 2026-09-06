@@ -7,8 +7,6 @@ payments_service can verify a webhook against the real source of truth instead o
 the webhook's own request body - see that module's docstring.
 """
 
-import uuid
-
 import httpx
 
 from app.config import settings
@@ -39,7 +37,3 @@ async def get_payment(payment_id: str) -> dict:
         response = await client.get(f"{BASE_URL}/payments/{payment_id}")
         response.raise_for_status()
         return response.json()
-
-
-def new_idempotence_key() -> str:
-    return str(uuid.uuid4())

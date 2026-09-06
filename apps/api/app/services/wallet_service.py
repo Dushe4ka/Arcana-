@@ -20,8 +20,11 @@ async def get_wallet(db: AsyncSession, user_id: str) -> Wallet:
     return wallet
 
 
-async def _get_wallet_by_user(db: AsyncSession, user_id: str) -> Wallet:
-    wallet = await db.scalar(select(Wallet).where(Wallet.user_id == user_id))
+async def _get_wallet_by_user(db: AsyncSession, user_id: str, *, for_update: bool = False) -> Wallet:
+    query = select(Wallet).where(Wallet.user_id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    wallet = await db.scalar(query)
     if not wallet:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Кошелёк не найден")
     return wallet
@@ -99,7 +102,7 @@ async def grant_currency(
 ) -> None:
     if amount <= 0:
         return
-    wallet = await _get_wallet_by_user(db, user_id)
+    wallet = await _get_wallet_by_user(db, user_id, for_update=True)
     if currency == "SOFT":
         wallet.soft += amount
     else:

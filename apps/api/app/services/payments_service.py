@@ -102,3 +102,4 @@ async def handle_webhook(db: AsyncSession, payment_id: str) -> None:
     await wallet_service.grant_currency(
         db, str(purchase.user_id), purchase.currency, purchase.amount, reason=f"yookassa:{payment_id}"
     )
+    await db.commit()
