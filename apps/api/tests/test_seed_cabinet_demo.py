@@ -48,3 +48,32 @@ async def test_seeded_player_stats_endpoint(db_session, client):
 
     general_by_key = {g["variableKey"]: g["value"] for g in stories[0]["general"]}
     assert general_by_key["confidence"] == 3
+
+
+@pytest.mark.asyncio
+async def test_seed_cabinet_demo_full_script_idempotent(db_session, client):
+    # Two consecutive `python seed.py` runs: the second run's seed_demo_story deletes and
+    # recreates the story (cascading away the slot / variable values) *before* seed_cabinet_demo
+    # gets to rebuild them.
+    await seed_demo_story(db_session)
+    await seed_cabinet_demo(db_session)
+    # A real second invocation is a fresh process with a fresh Session - drop the identity map
+    # so seed_demo_story's story lookup + delete-cascade runs against clean ORM state.
+    db_session.expunge_all()
+    await seed_demo_story(db_session)
+    await seed_cabinet_demo(db_session)
+    await db_session.commit()
+
+    users = list(await db_session.scalars(select(User).where(User.email == "player@arcana.app")))
+    assert len(users) == 1
+
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "player@arcana.app", "password": "Player123!"},
+    )
+    assert login.status_code == 200
+    token = login.json()["accessToken"]
+
+    res = await client.get("/api/me/stats", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    assert len(res.json()) == 1

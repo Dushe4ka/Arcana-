@@ -67,7 +67,7 @@ class Chapter(Base, UUIDPKMixin, TimestampMixin):
     )
 
     season: Mapped[Season] = relationship(back_populates="chapters")
-    entry_node: Mapped["SceneNode | None"] = relationship(foreign_keys=[entry_node_id])
+    entry_node: Mapped["SceneNode | None"] = relationship(foreign_keys=[entry_node_id], post_update=True)
     nodes: Mapped[list["SceneNode"]] = relationship(
         back_populates="chapter",
         foreign_keys="SceneNode.chapter_id",
