@@ -7,7 +7,7 @@ Run with: python seed.py
 
 import asyncio
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.core.security import hash_password
 from app.database import SessionLocal
@@ -22,6 +22,7 @@ from app.models.content import (
 )
 from app.models.economy import DailyRewardState, Wallet
 from app.models.enums import ContentStatus, SceneNodeType, StoryGenre
+from app.models.player import PlayerVariableValue, SaveSlot
 from app.models.user import PlayerProfile, User
 
 PLACEHOLDER_BG_NIGHT = "https://picsum.photos/seed/arcana-night-hall/1200/800"
@@ -501,10 +502,74 @@ async def seed_chapter_two(db, season_id, dante, lia, rel_dante):
     await db.commit()
 
 
+async def seed_cabinet_demo(db):
+    """A PLAYER account with real progress so the player cabinet site has something to show:
+    wallet balance, a save slot on the demo story, and a few variable values that GET /me/stats
+    turns into 2 relationship bars + 1 general stat. seed_demo_story deletes and recreates the
+    story on every run (cascading away this slot/values), so this always re-creates them."""
+    email = "player@arcana.app"
+    user = await db.scalar(select(User).where(User.email == email))
+    if not user:
+        user = User(email=email, password_hash=hash_password("Player123!"), role="PLAYER")
+        db.add(user)
+        await db.flush()
+        db.add(PlayerProfile(user_id=user.id, display_name="Демо Игрок"))
+        db.add(DailyRewardState(user_id=user.id))
+
+    wallet = await db.scalar(select(Wallet).where(Wallet.user_id == user.id))
+    if not wallet:
+        wallet = Wallet(user_id=user.id)
+        db.add(wallet)
+    wallet.soft = 500
+    wallet.hard = 200
+
+    story = await db.scalar(select(Story).where(Story.slug == "mask-and-word"))
+    if story is None:
+        print("seed_cabinet_demo: demo story missing, run seed_demo_story first — skipping")
+        return
+
+    first_chapter = await db.scalar(
+        select(Chapter)
+        .join(Season, Chapter.season_id == Season.id)
+        .where(Season.story_id == story.id)
+        .order_by(Season.index, Chapter.index)
+        .limit(1)
+    )
+
+    # Rebuild the save slot from scratch (cascade may have removed the old one).
+    await db.execute(delete(SaveSlot).where(SaveSlot.user_id == user.id, SaveSlot.story_id == story.id))
+    db.add(
+        SaveSlot(
+            user_id=user.id,
+            story_id=story.id,
+            slot_index=1,
+            chapter_id=first_chapter.id if first_chapter else None,
+        )
+    )
+
+    defs = list(await db.scalars(select(VariableDefinition).where(VariableDefinition.story_id == story.id)))
+    demo_values = {}
+    for d in defs:
+        if d.character_id is not None:
+            character = await db.get(Character, d.character_id)
+            name_ru = (character.name or {}).get("ru", "") if character else ""
+            demo_values[d.id] = 40 if "Данте" in name_ru else 15
+        elif d.key == "confidence":
+            demo_values[d.id] = 3
+
+    await db.execute(delete(PlayerVariableValue).where(PlayerVariableValue.user_id == user.id))
+    for def_id, value in demo_values.items():
+        db.add(PlayerVariableValue(user_id=user.id, variable_definition_id=def_id, value=value))
+
+    await db.commit()
+    print(f"Cabinet demo player ready: {email} / Player123!")
+
+
 async def main():
     async with SessionLocal() as db:
         await seed_admin_user(db)
         await seed_demo_story(db)
+        await seed_cabinet_demo(db)
     print("Seed complete.")
 
 
