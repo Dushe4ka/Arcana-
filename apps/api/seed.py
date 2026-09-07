@@ -553,6 +553,8 @@ async def seed_cabinet_demo(db):
         if d.character_id is not None:
             character = await db.get(Character, d.character_id)
             name_ru = (character.name or {}).get("ru", "") if character else ""
+            # Demo-only heuristic: picks a "further along with Dante" progress state by
+            # matching the seeded character name. Breaks if that character is renamed.
             demo_values[d.id] = 40 if "Данте" in name_ru else 15
         elif d.key == "confidence":
             demo_values[d.id] = 3

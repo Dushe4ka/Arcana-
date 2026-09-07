@@ -39,3 +39,12 @@ async def test_seeded_player_stats_endpoint(db_session, client):
     assert len(stories) == 1
     assert len(stories[0]["relationships"]) == 2
     assert len(stories[0]["general"]) == 1
+
+    # The exact numbers the seed writes, not just the counts - catches a regression that
+    # seeds wrong values.
+    rel_by_name = {r["characterName"]["ru"]: r["value"] for r in stories[0]["relationships"]}
+    assert rel_by_name["Данте Аркана"] == 40
+    assert rel_by_name["Лия Северцева"] == 15
+
+    general_by_key = {g["variableKey"]: g["value"] for g in stories[0]["general"]}
+    assert general_by_key["confidence"] == 3
