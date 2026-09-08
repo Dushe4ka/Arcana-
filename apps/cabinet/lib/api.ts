@@ -19,15 +19,20 @@ export class ApiError extends Error {
  * has already refreshed it if needed, so a 401 here means the session is genuinely gone. */
 export async function serverFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = (await cookies()).get(AT_COOKIE)?.value;
-  const res = await fetch(`${apiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers as Record<string, string> | undefined),
-    },
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${apiBaseUrl()}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers as Record<string, string> | undefined),
+      },
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError(0, "Не удалось подключиться к серверу. Проверьте, что backend запущен.");
+  }
 
   if (res.status === 204) return undefined as T;
 

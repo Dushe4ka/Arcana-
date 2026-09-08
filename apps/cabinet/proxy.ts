@@ -30,9 +30,15 @@ export async function proxy(request: NextRequest) {
     // network error — fall through to the expired page
   }
 
-  if (!pair) return redirectExpired(request);
+  // A malformed 200 (missing either token) must not write literal "undefined" cookies.
+  if (!pair?.accessToken || !pair?.refreshToken) return redirectExpired(request);
 
-  const response = NextResponse.next();
+  // Mutate the *request* cookies too, then forward the request — Next does not feed the
+  // response's Set-Cookie back into `cookies()` for this same pass, so without this the
+  // page rendered by this very request would still read the old, expired access token.
+  request.cookies.set(AT_COOKIE, pair.accessToken);
+  request.cookies.set(RT_COOKIE, pair.refreshToken);
+  const response = NextResponse.next({ request });
   writeSessionCookies(response, pair);
   return response;
 }
