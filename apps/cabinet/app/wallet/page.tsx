@@ -77,6 +77,9 @@ function WalletReturn() {
 
       setHard(value);
 
+      // TODO(follow-up): switch from balance-delta to GET /me/purchases/{id} status polling —
+      // `hard > baseline` can't distinguish "webhook landed before our first read" from
+      // "payment failed", so a fast successful payment can still fall through to `timeout`.
       if (baselineRef.current === null) {
         // Baseline missed on mount — the first successful reading becomes the baseline.
         baselineRef.current = value;
@@ -153,8 +156,8 @@ function WalletReturn() {
       {status === "timeout" && (
         <>
           <p className="max-w-xs text-[15px] leading-relaxed text-text">
-            Если платёж прошёл, баланс обновится в течение пары минут. Можно вернуться в
-            приложение.
+            Платёж обрабатывается. Баланс обновится автоматически — можно вернуться в
+            приложение, там он тоже подтянется.
           </p>
           <BalancePill />
         </>

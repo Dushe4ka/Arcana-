@@ -3,11 +3,13 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "env": ["API_BASE_URL", "COOKIE_SECURE", "NODE_ENV"]
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "env": ["API_BASE_URL", "COOKIE_SECURE", "NODE_ENV"]
     },
     "lint": {
       "dependsOn": ["^build"]

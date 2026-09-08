@@ -21,6 +21,14 @@ export function BuyButton({ packageId, priceLabel }: { packageId: string; priceL
         setPending(false);
         return;
       }
+      if (
+        typeof body.confirmationUrl !== "string" ||
+        !body.confirmationUrl.startsWith("https://")
+      ) {
+        setError("Некорректная ссылка на оплату");
+        setPending(false);
+        return;
+      }
       window.location.href = body.confirmationUrl;
     } catch {
       setError("Нет связи с сервером, попробуйте позже");

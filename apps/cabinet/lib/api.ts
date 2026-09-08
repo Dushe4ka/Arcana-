@@ -24,9 +24,9 @@ export async function serverFetch<T>(path: string, init: RequestInit = {}): Prom
     res = await fetch(`${apiBaseUrl()}${path}`, {
       ...init,
       headers: {
+        ...(init.headers as Record<string, string> | undefined),
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(init.headers as Record<string, string> | undefined),
       },
       cache: "no-store",
     });

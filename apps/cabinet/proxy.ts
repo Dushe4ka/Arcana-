@@ -44,8 +44,18 @@ export async function proxy(request: NextRequest) {
 }
 
 function redirectExpired(request: NextRequest) {
-  const response = NextResponse.redirect(new URL("/session-expired", request.url));
-  response.cookies.delete(AT_COOKIE);
-  response.cookies.delete(RT_COOKIE);
-  return response;
+  // No cookie deletion here: two concurrent requests on an expired access token both send the
+  // same one-time refresh token — the winner gets a fresh pair (Set-Cookie), the loser gets a
+  // 401 and lands here. Deleting cookies here would race the winner's Set-Cookie and could wipe
+  // a session that is actually alive. A genuinely dead refresh token just redirects again on
+  // the next request (no loop — `/session-expired` is outside the matcher), and a successful
+  // `/auth/callback` overwrites the stale cookies via `writeSessionCookies`.
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    // `/api/*` callers do `res.json()` — give them a JSON 401, not an HTML redirect.
+    return NextResponse.json(
+      { message: "Сессия истекла, вернитесь в приложение" },
+      { status: 401 },
+    );
+  }
+  return NextResponse.redirect(new URL("/session-expired", request.url));
 }
