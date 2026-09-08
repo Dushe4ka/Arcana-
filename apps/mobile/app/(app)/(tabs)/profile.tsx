@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 
 import { Button } from "../../../components/Button";
@@ -8,12 +8,14 @@ import { useAuthStore } from "../../../lib/auth-store";
 import { colors, radius } from "../../../lib/theme";
 import { useWalletStore } from "../../../lib/wallet-store";
 import { ApiError } from "../../../lib/api";
+import { openCabinet } from "../../../lib/cabinet";
 
 export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { wallet, loading, fetch, claimDaily } = useWalletStore();
   const [claiming, setClaiming] = useState(false);
+  const [openingCabinet, setOpeningCabinet] = useState(false);
 
   useEffect(() => {
     fetch();
@@ -31,6 +33,17 @@ export default function ProfileScreen() {
       Alert.alert("Не получилось", err instanceof ApiError ? err.message : "Попробуйте позже");
     } finally {
       setClaiming(false);
+    }
+  };
+
+  const onOpenCabinet = async (path: "/shop" | "/stats") => {
+    setOpeningCabinet(true);
+    try {
+      await openCabinet(path);
+    } catch (err) {
+      Alert.alert("Не получилось", err instanceof ApiError ? err.message : "Попробуйте позже");
+    } finally {
+      setOpeningCabinet(false);
     }
   };
 
@@ -68,6 +81,14 @@ export default function ProfileScreen() {
           ) : (
             <Text style={styles.muted}>Не удалось загрузить</Text>
           )}
+          <Button
+            title="Пополнить кристаллы"
+            onPress={() => onOpenCabinet("/shop")}
+            loading={openingCabinet}
+          />
+          <Pressable onPress={() => onOpenCabinet("/stats")} disabled={openingCabinet}>
+            <Text style={styles.cabinetLink}>Личный кабинет и статистика →</Text>
+          </Pressable>
         </View>
 
         <View style={styles.dailyCard}>
@@ -130,6 +151,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: { color: colors.text, fontSize: 18, fontWeight: "700" },
   muted: { color: colors.textMuted },
+  cabinetLink: { color: colors.accent, fontSize: 14, textAlign: "center", paddingVertical: 8 },
   walletRow: { flexDirection: "row", justifyContent: "space-between" },
   stat: { alignItems: "center", gap: 4 },
   statValue: { fontSize: 22, fontWeight: "700" },
