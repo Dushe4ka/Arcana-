@@ -14,6 +14,8 @@ Arcana — мобильное приложение интерактивных в
 apps/
   api/      Backend на Python (FastAPI) — единый API для мобильного приложения и (будущей) админ-панели
   mobile/   React Native (Expo) приложение — iOS/Android/Web из одного кода
+  cabinet/  Личный кабинет игрока (Next.js) — баланс, статистика, покупка кристаллов через
+            ЮKassa; вход только по одноразовому коду из мобильного приложения
 packages/
   shared/   Общие TypeScript-типы и Zod-схемы для admin/mobile (backend на Python использует
             свои Pydantic-схемы с той же формой данных — оба намеренно держатся в синхронизации)
@@ -22,8 +24,8 @@ packages/
 `apps/api` — самостоятельный Python-проект (свой virtualenv, requirements.txt), **не входит**
 в pnpm workspace. `apps/mobile` и `packages/shared` — pnpm workspace (Turborepo).
 
-`apps/admin` (Next.js веб-панель для сценаристов) упоминается в README как часть архитектуры,
-но ещё не создана в этом дереве — пока это только план.
+`apps/admin` (Next.js веб-панель для сценаристов) упоминается в README как часть архитектуры;
+теперь и `apps/admin`, и `apps/cabinet` уже существуют в дереве (админка ещё в работе).
 
 Архитектура:
 
