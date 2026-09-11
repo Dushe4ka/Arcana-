@@ -8,8 +8,10 @@
 
 ```
 apps/
-  api/      Backend на Python (FastAPI) — единый API для мобильного приложения и админ-панели
-  admin/    Next.js веб-панель для сценаристов (создание историй, глав, диалогов)
+  api/      Backend на Python (FastAPI) — единый API для мобильного приложения, кабинета и админки
+  admin/    Next.js веб-панель для сценаристов (создание историй, глав, диалогов) — в работе
+  cabinet/  Next.js личный кабинет игрока — баланс, статистика, покупка кристаллов (вход по
+            одноразовому коду из мобильного приложения)
   mobile/   React Native (Expo) приложение — iOS и Android из одного кода
 packages/
   shared/   Общие TypeScript-типы и Zod-схемы валидации для admin/mobile (backend на Python
@@ -17,14 +19,15 @@ packages/
 ```
 
 `apps/api` — самостоятельный Python-проект (свой virtualenv, requirements.txt), не часть
-pnpm workspace. `apps/admin`, `apps/mobile` и `packages/shared` — pnpm workspace (Turborepo).
+pnpm workspace. `apps/admin`, `apps/cabinet`, `apps/mobile` и `packages/shared` — pnpm
+workspace (Turborepo).
 
 Архитектура:
 
 ```
-Mobile App  ─┐
-             ├─▶ Backend API (Python/FastAPI) ─▶ PostgreSQL
-Admin Panel ─┘
+Mobile App     ─┐
+Player Cabinet  ├─▶ Backend API (Python/FastAPI) ─▶ PostgreSQL
+Admin Panel    ─┘
 ```
 
 Backend — на Python, потому что так попросил владелец продукта. Мобильное приложение и

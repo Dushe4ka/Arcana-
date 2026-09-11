@@ -22,21 +22,23 @@ packages/
 ```
 
 `apps/api` — самостоятельный Python-проект (свой virtualenv, requirements.txt), **не входит**
-в pnpm workspace. `apps/mobile` и `packages/shared` — pnpm workspace (Turborepo).
+в pnpm workspace. `apps/mobile`, `apps/cabinet`, `apps/admin` и `packages/shared` — pnpm
+workspace (Turborepo).
 
-`apps/admin` (Next.js веб-панель для сценаристов) упоминается в README как часть архитектуры;
-теперь и `apps/admin`, и `apps/cabinet` уже существуют в дереве (админка ещё в работе).
+`apps/cabinet` (личный кабинет игрока) и `apps/admin` (Next.js веб-панель для сценаристов)
+оба существуют в дереве; `apps/admin` ещё в работе.
 
 Архитектура:
 
 ```
-Mobile App  ─┐
-             ├─▶ Backend API (Python/FastAPI) ─▶ PostgreSQL
-Admin Panel ─┘  (пока не реализована)
+Mobile App     ─┐
+Player Cabinet  ├─▶ Backend API (Python/FastAPI) ─▶ PostgreSQL
+Admin Panel    ─┘  (admin ещё в работе)
 ```
 
-Backend — на Python по требованию владельца продукта; мобильное приложение (и будущая
-админ-панель) — на TypeScript/React, обращаются к Python-серверу через обычный HTTP API.
+Backend — на Python по требованию владельца продукта; мобильное приложение, личный кабинет
+игрока (`apps/cabinet`) и админ-панель (`apps/admin`, ещё в работе) — на TypeScript/React,
+обращаются к Python-серверу через обычный HTTP API.
 
 ## Команды
 
@@ -82,6 +84,21 @@ CI (`.github/workflows/eas-update.yml`) автоматически публик�
 `preview` через `eas-cli update` при пуше в `main`, если менялись `apps/mobile/**` или
 `packages/shared/**` — требует секрет `EXPO_TOKEN`.
 
+### Личный кабинет игрока (apps/cabinet)
+
+```bash
+cd apps/cabinet
+cp .env.local.example .env.local     # API_BASE_URL (backend, с /api); COOKIE_SECURE
+pnpm --filter @arcana/cabinet dev    # Next.js dev на порту 3100
+pnpm --filter @arcana/cabinet typecheck
+pnpm --filter @arcana/cabinet lint
+pnpm --filter @arcana/cabinet build
+```
+
+`API_BASE_URL` — server-only адрес backend (браузер напрямую в backend не ходит); в проде
+обязателен. `COOKIE_SECURE` в проде включён по умолчанию (`"false"` — только для явного
+переопределения), локальный dev его игнорирует. Тест-раннера у `apps/cabinet` нет.
+
 ### Backend (apps/api)
 
 Самостоятельный Python-проект, не управляется через pnpm/turbo.
@@ -112,7 +129,7 @@ catch-all хендлер в `app/core/errors.py`.
 ```bash
 ruff check app seed.py            # линт (E, F, I, UP, B; line-length 110)
 ruff format app seed.py
-pytest                             # asyncio_mode=auto; каталог tests/ пока пуст — тестов ещё нет
+pytest                             # asyncio_mode=auto; нужна БД с именем на *_test (conftest.py)
 alembic revision --autogenerate -m "..."   # новая миграция после изменения моделей
 ```
 
@@ -178,6 +195,5 @@ Python-схемы (`CamelModel`) обязаны зеркалить по знач
 
 ## Заметки
 
-- `README.md` в рабочей копии сейчас усечён до заголовка (незакоммиченное изменение) — более
-  подробная версия с описанием структуры репозитория и статуса разработки лежит в
-  `git show HEAD:README.md`, часть этого текста перенесена сюда.
+- `pytest` в `apps/api` требует одноразовую БД, имя которой оканчивается на `_test` (см.
+  `tests/conftest.py`) — например `DATABASE_URL=postgresql+asyncpg://localhost/arcana_test`.
