@@ -1,8 +1,10 @@
 import Link from "next/link";
 
+import type { CabinetRoute } from "@/lib/routes";
+
 type NavKey = "home" | "stats" | "shop";
 
-const NAV: { key: NavKey; href: string; label: string }[] = [
+const NAV: { key: NavKey; href: Extract<CabinetRoute, "/" | "/stats" | "/shop">; label: string }[] = [
   { key: "home", href: "/", label: "Баланс" },
   { key: "stats", href: "/stats", label: "Статистика" },
   { key: "shop", href: "/shop", label: "Кристаллы" },

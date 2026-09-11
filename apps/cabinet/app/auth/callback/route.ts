@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { apiBaseUrl } from "@/lib/env";
+import { CABINET_ROUTES } from "@/lib/routes";
 import { writeSessionCookies } from "@/lib/session";
 
 /** Only these in-app paths may be used as a post-login redirect target — an open redirect here
  * would let a crafted deeplink bounce a freshly authenticated user to an attacker's site. */
-const SAFE_NEXT = new Set(["/", "/shop", "/stats", "/wallet"]);
+const SAFE_NEXT: ReadonlySet<string> = new Set(CABINET_ROUTES);
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");

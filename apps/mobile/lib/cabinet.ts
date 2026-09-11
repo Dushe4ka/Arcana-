@@ -7,6 +7,8 @@ const CABINET_URL = (process.env.EXPO_PUBLIC_CABINET_URL ?? "http://localhost:31
   "",
 );
 
+// Kept in sync by hand with apps/cabinet/lib/routes.ts's CABINET_ROUTES - a separate app/package,
+// not worth a shared module for three literal strings.
 type CabinetPath = "/" | "/shop" | "/stats";
 
 /** Mint a 60-second one-time code and hand the player a cabinet session in the SYSTEM browser
