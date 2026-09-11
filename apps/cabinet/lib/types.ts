@@ -39,3 +39,10 @@ export type PackageView = {
   amount: number;
   priceRubKopecks: number;
 };
+
+export type PurchaseStatusView = {
+  id: string;
+  status: "PENDING" | "COMPLETED" | "FAILED" | "CANCELED";
+  amount: number;
+  currency: string;
+};
