@@ -132,6 +132,64 @@ async def test_create_purchase_returns_502_on_malformed_yookassa_response(
     assert purchase.status == PurchaseStatus.FAILED
 
 
+async def test_get_purchase_status_reflects_pending_then_completed(
+    client, make_user, auth_headers, mock_yookassa, db_session
+):
+    """The player cabinet's /wallet return page polls this endpoint (instead of the wallet
+    balance delta) so it can tell "still processing" apart from "done" even when the webhook
+    beats the page's first balance read."""
+    user = await make_user("status-poll@example.com")
+    create_response = await client.post(
+        "/api/me/purchases", json={"packageId": "hard_100"}, headers=auth_headers(user)
+    )
+    assert create_response.status_code == 200
+    purchase = await db_session.scalar(
+        select(Purchase).where(Purchase.user_id == user.id).order_by(Purchase.created_at.desc())
+    )
+    purchase_id = str(purchase.id)
+
+    pending_response = await client.get(f"/api/me/purchases/{purchase_id}", headers=auth_headers(user))
+    assert pending_response.status_code == 200
+    assert pending_response.json() == {
+        "id": purchase_id,
+        "status": "PENDING",
+        "amount": 100,
+        "currency": "HARD",
+    }
+
+    await client.post(
+        "/api/webhooks/yookassa",
+        json={"event": "payment.succeeded", "object": {"id": "yk-payment-123"}},
+    )
+
+    completed_response = await client.get(f"/api/me/purchases/{purchase_id}", headers=auth_headers(user))
+    assert completed_response.json()["status"] == "COMPLETED"
+
+
+async def test_get_purchase_status_404_for_someone_elses_purchase(
+    client, make_user, auth_headers, mock_yookassa, db_session
+):
+    owner = await make_user("purchase-owner@example.com")
+    stranger = await make_user("purchase-stranger@example.com")
+    await client.post("/api/me/purchases", json={"packageId": "hard_100"}, headers=auth_headers(owner))
+    purchase = await db_session.scalar(
+        select(Purchase).where(Purchase.user_id == owner.id).order_by(Purchase.created_at.desc())
+    )
+    purchase_id = str(purchase.id)
+
+    response = await client.get(f"/api/me/purchases/{purchase_id}", headers=auth_headers(stranger))
+    assert response.status_code == 404
+
+
+async def test_get_purchase_status_404_for_unknown_id(client, make_user, auth_headers):
+    user = await make_user("purchase-unknown@example.com")
+    response = await client.get(
+        "/api/me/purchases/00000000-0000-0000-0000-000000000000",
+        headers=auth_headers(user),
+    )
+    assert response.status_code == 404
+
+
 async def test_webhook_does_not_credit_when_real_status_is_not_succeeded(
     client, make_user, auth_headers, mock_yookassa, db_session
 ):

@@ -80,6 +80,18 @@ async def create_purchase(db: AsyncSession, user_id: str, package_id: str) -> st
     return confirmation_url
 
 
+async def get_purchase_status(db: AsyncSession, user_id: str, purchase_id: str) -> Purchase:
+    """Looked up by the player cabinet's /wallet return page. 404 (not 403) for a purchase
+    that exists but belongs to someone else - same reasoning as elsewhere in the codebase,
+    don't confirm another user's purchase id exists."""
+    purchase = await db.scalar(
+        select(Purchase).where(Purchase.id == purchase_id, Purchase.user_id == user_id)
+    )
+    if not purchase:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Покупка не найдена")
+    return purchase
+
+
 async def handle_webhook(db: AsyncSession, payment_id: str) -> None:
     purchase = await db.scalar(
         select(Purchase).where(Purchase.provider_payment_id == payment_id).with_for_update()

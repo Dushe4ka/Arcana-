@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import AuthenticatedUser, get_current_user
 from app.database import get_db
-from app.schemas.payments import CreatePurchaseInput, CreatePurchaseOut, PackageOut
+from app.schemas.payments import CreatePurchaseInput, CreatePurchaseOut, PackageOut, PurchaseStatusOut
 from app.services import payments_service
 
 router = APIRouter(prefix="/me", tags=["me:purchases"], dependencies=[Depends(get_current_user)])
@@ -22,3 +22,18 @@ async def create_purchase(
 ):
     url = await payments_service.create_purchase(db, user.user_id, body.package_id)
     return CreatePurchaseOut(confirmation_url=url)
+
+
+@router.get("/purchases/{purchase_id}", response_model=PurchaseStatusOut)
+async def get_purchase_status(
+    purchase_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    purchase = await payments_service.get_purchase_status(db, user.user_id, purchase_id)
+    return PurchaseStatusOut(
+        id=str(purchase.id),
+        status=purchase.status,
+        amount=purchase.amount,
+        currency=purchase.currency,
+    )

@@ -1,5 +1,6 @@
 from pydantic import Field
 
+from app.models.enums import PurchaseStatus
 from app.schemas.base import CamelModel
 
 
@@ -16,3 +17,14 @@ class CreatePurchaseInput(CamelModel):
 
 class CreatePurchaseOut(CamelModel):
     confirmation_url: str
+
+
+class PurchaseStatusOut(CamelModel):
+    """Polled by the player cabinet's /wallet return page instead of the wallet balance -
+    lets it tell "still processing" apart from "done" even when the webhook credits the
+    wallet before the page's first balance read."""
+
+    id: str
+    status: PurchaseStatus
+    amount: int
+    currency: str
