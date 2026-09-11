@@ -1,3 +1,4 @@
+import { Card } from "@/components/Card";
 import type { WalletView } from "@/lib/types";
 
 const STATS: { key: "soft" | "hard" | "energy"; label: string; className: string }[] = [
@@ -13,12 +14,7 @@ export function BalanceCard({ wallet }: { wallet: WalletView }) {
       : 0;
 
   return (
-    <section
-      className="relative overflow-hidden rounded-[22px] bg-surface p-6
-        before:absolute before:inset-x-0 before:top-0 before:h-px before:opacity-60
-        before:bg-[linear-gradient(90deg,transparent,var(--accent)_50%,transparent)]
-        before:content-['']"
-    >
+    <Card>
       <h1 className="font-[family-name:var(--font-display)] text-xl font-bold text-text">
         Кошелёк
       </h1>
@@ -56,6 +52,6 @@ export function BalanceCard({ wallet }: { wallet: WalletView }) {
           <div className="h-full rounded-full bg-accent" style={{ width: `${fillPercent}%` }} />
         </div>
       </div>
-    </section>
+    </Card>
   );
 }
