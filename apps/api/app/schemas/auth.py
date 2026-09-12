@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import EmailStr, Field
 
 from app.schemas.base import CamelModel
@@ -7,6 +9,16 @@ class RegisterInput(CamelModel):
     email: EmailStr
     password: str = Field(min_length=8, description="Минимум 8 символов")
     display_name: str = Field(min_length=2, max_length=40)
+
+
+class CreateStaffUserInput(CamelModel):
+    """ADMIN-only: create a WRITER/EDITOR/ADMIN account. PLAYER accounts are never created
+    here - they go through the public POST /auth/register instead."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, description="Минимум 8 символов")
+    display_name: str = Field(min_length=2, max_length=40)
+    role: Literal["WRITER", "EDITOR", "ADMIN"]
 
 
 class LoginInput(CamelModel):

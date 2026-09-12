@@ -17,6 +17,7 @@ from app.routers import (
     preview,
     purchases,
     scenes,
+    staff,
     stats,
     stories,
     uploads,
@@ -70,6 +71,7 @@ app.include_router(uploads.router, prefix="/api")
 app.include_router(preview.router, prefix="/api")
 app.include_router(purchases.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
+app.include_router(staff.router, prefix="/api")
 
 # `app` must stay a real FastAPI instance - tests (see tests/conftest.py) rely on
 # `app.dependency_overrides`, which only exists on a `FastAPI` instance, not on the

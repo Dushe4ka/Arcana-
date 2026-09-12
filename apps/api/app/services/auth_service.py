@@ -15,9 +15,11 @@ from app.core.security import (
     verify_password,
 )
 from app.models.economy import DailyRewardState, Wallet
+from app.models.enums import UserRole
 from app.models.user import CabinetLinkToken, PlayerProfile, RefreshToken, User
 from app.schemas.auth import (
     AuthResponse,
+    CreateStaffUserInput,
     LoginInput,
     PublicUser,
     RegisterInput,
@@ -119,6 +121,38 @@ async def register(db: AsyncSession, data: RegisterInput) -> AuthResponse:
 
     tokens = await _issue_token_pair(db, user)
     return AuthResponse(user=_to_public_user(user, data.display_name), **tokens.model_dump())
+
+
+async def create_staff_user(db: AsyncSession, data: CreateStaffUserInput) -> PublicUser:
+    """ADMIN-only account creation for WRITER/EDITOR/ADMIN staff - the admin panel's "create
+    employee" screen. Gives the new account the same profile/wallet/daily-reward rows every
+    user gets (mirrors register() and seed.py's seed_admin_user) so nothing downstream has to
+    special-case a walletless account; staff simply never use the wallet-facing endpoints."""
+    existing = await db.scalar(select(User).where(User.email == data.email))
+    if existing:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Пользователь с таким email уже зарегистрирован")
+
+    user = User(email=data.email, password_hash=hash_password(data.password), role=UserRole(data.role))
+    db.add(user)
+    await db.flush()
+
+    db.add(PlayerProfile(user_id=user.id, display_name=data.display_name))
+    db.add(Wallet(user_id=user.id))
+    db.add(DailyRewardState(user_id=user.id))
+    await db.commit()
+
+    return _to_public_user(user, data.display_name)
+
+
+async def list_staff_users(db: AsyncSession) -> list[PublicUser]:
+    """Everyone except PLAYER accounts - the admin panel's employee list. Filtered so this
+    stays a short staff roster rather than loading the entire player base."""
+    users = await db.scalars(select(User).where(User.role != UserRole.PLAYER))
+    result = []
+    for user in users:
+        display_name = await _get_display_name(db, user.id)
+        result.append(_to_public_user(user, display_name))
+    return result
 
 
 async def login(db: AsyncSession, data: LoginInput) -> AuthResponse:
