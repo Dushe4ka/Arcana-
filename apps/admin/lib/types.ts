@@ -1,4 +1,11 @@
-import type { LocalizedText, StoryGenre, ContentStatus } from "@arcana/shared";
+import type { LocalizedText, StoryGenre, ContentStatus, UserRole } from "@arcana/shared";
+
+export type StaffUserOut = {
+  id: string;
+  email: string;
+  displayName: string;
+  role: UserRole;
+};
 
 export type StoryOut = {
   id: string;

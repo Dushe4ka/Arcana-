@@ -39,6 +39,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <Link href="/stories" className="text-sm text-neutral-600 hover:text-neutral-900">
             Истории
           </Link>
+          {user?.role === "ADMIN" && (
+            <Link href="/users" className="text-sm text-neutral-600 hover:text-neutral-900">
+              Сотрудники
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-4 text-sm text-neutral-600">
           <span>{user?.email}</span>
