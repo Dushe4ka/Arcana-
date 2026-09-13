@@ -214,6 +214,19 @@ function ChaptersList({ season, onChanged }: { season: StoryDetailOut["seasons"]
     }
   };
 
+  const onDeleteChapter = async (chapter: StoryDetailOut["seasons"][number]["chapters"][number]) => {
+    if (!confirm(`Удалить главу ${chapter.index}: ${chapter.title.ru}? Все узлы внутри пропадут вместе с ней. Это необратимо.`)) {
+      return;
+    }
+    try {
+      await apiRequest(`/admin/chapters/${chapter.id}`, { method: "DELETE" });
+      setActionError(null);
+      onChanged();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : "Не удалось удалить главу");
+    }
+  };
+
   return (
     <div className="rounded border border-neutral-200 bg-white p-4">
       <div className="mb-2 flex items-center justify-between">
@@ -271,6 +284,9 @@ function ChaptersList({ season, onChanged }: { season: StoryDetailOut["seasons"]
               </Link>
               <button onClick={() => onToggleChapterPublish(chapter)} className="text-neutral-600 underline">
                 {chapter.status === "PUBLISHED" ? "Снять с публикации" : "Опубликовать"}
+              </button>
+              <button onClick={() => onDeleteChapter(chapter)} className="text-red-600 underline">
+                Удалить
               </button>
             </div>
           </li>
