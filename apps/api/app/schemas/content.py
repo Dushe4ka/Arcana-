@@ -86,6 +86,19 @@ class CharacterUpdateInput(CamelModel):
     is_protagonist: bool | None = None
 
 
+class OutfitCreateInput(CamelModel):
+    key: str = Field(min_length=1, max_length=40)
+    label: LocalizedText
+    price_hard: int = Field(default=0, ge=0)
+    stat_effects: EffectList = Field(default_factory=list)
+
+
+class OutfitUpdateInput(CamelModel):
+    label: LocalizedText | None = None
+    price_hard: int | None = Field(default=None, ge=0)
+    stat_effects: EffectList | None = None
+
+
 class VariableDefinitionCreateInput(CamelModel):
     story_id: str
     key: str = Field(min_length=1, max_length=40)

@@ -13,6 +13,7 @@ from app.routers import (
     catalog,
     characters,
     favorites,
+    outfits,
     play,
     preview,
     purchases,
@@ -62,6 +63,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(stories.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
 app.include_router(characters.router, prefix="/api")
+app.include_router(outfits.router, prefix="/api")
 app.include_router(scenes.router, prefix="/api")
 app.include_router(play.router, prefix="/api")
 app.include_router(wallet.router, prefix="/api")

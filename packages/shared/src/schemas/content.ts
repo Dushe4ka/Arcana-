@@ -62,6 +62,23 @@ export type CharacterCreateInput = z.infer<typeof characterCreateSchema>;
 export const characterUpdateSchema = characterCreateSchema.partial().omit({ storyId: true });
 export type CharacterUpdateInput = z.infer<typeof characterUpdateSchema>;
 
+/**
+ * A purchasable/selectable outfit for one character - `key` matches the outfit column name
+ * already used in Character.sprites (e.g. "dress" -> sprite key "dress_smile"). Price and
+ * statEffects are what the player-facing "Смена наряда" choice is built from; the sprite
+ * images themselves stay in Character.sprites, untouched by this schema.
+ */
+export const outfitCreateSchema = z.object({
+  key: z.string().min(1).max(40),
+  label: localizedTextSchema,
+  priceHard: z.number().int().min(0).default(0),
+  statEffects: effectListSchema,
+});
+export type OutfitCreateInput = z.infer<typeof outfitCreateSchema>;
+
+export const outfitUpdateSchema = outfitCreateSchema.partial().omit({ key: true });
+export type OutfitUpdateInput = z.infer<typeof outfitUpdateSchema>;
+
 export const variableDefinitionCreateSchema = z.object({
   storyId: z.string().uuid(),
   key: z

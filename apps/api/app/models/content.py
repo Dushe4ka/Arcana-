@@ -134,6 +134,25 @@ class Character(Base, UUIDPKMixin, TimestampMixin):
     variable_definitions: Mapped[list["VariableDefinition"]] = relationship(back_populates="character")
 
 
+class Outfit(Base, UUIDPKMixin, TimestampMixin):
+    """A purchasable/selectable outfit for one character - `key` matches the outfit column
+    name already used in `Character.sprites` (e.g. "dress" -> sprite key "dress_smile"). Price
+    and stat_effects are what the player-facing "Смена наряда" choice is built from; the
+    sprite images themselves stay in Character.sprites, untouched by this table."""
+
+    __tablename__ = "outfits"
+
+    character_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("characters.id", ondelete="CASCADE")
+    )
+    key: Mapped[str] = mapped_column(String)
+    label: Mapped[dict] = mapped_column(JSONB)
+    price_hard: Mapped[int] = mapped_column(Integer, default=0)
+    stat_effects: Mapped[list] = mapped_column(JSONB, default=list)
+
+    character: Mapped[Character] = relationship()
+
+
 class VariableDefinition(Base, UUIDPKMixin, TimestampMixin):
     __tablename__ = "variable_definitions"
     __table_args__ = (UniqueConstraint("story_id", "key", "character_id"),)

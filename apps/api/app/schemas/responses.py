@@ -10,7 +10,7 @@ from pydantic import ConfigDict
 from pydantic.alias_generators import to_camel
 
 from app.schemas.base import CamelModel
-from app.schemas.common import LocalizedText
+from app.schemas.common import EffectList, LocalizedText
 
 
 class ORMModel(CamelModel):
@@ -49,6 +49,15 @@ class CharacterOut(ORMModel):
     name_color: str
     sprites: dict[str, str]
     is_protagonist: bool
+
+
+class OutfitOut(ORMModel):
+    id: uuid.UUID
+    character_id: uuid.UUID
+    key: str
+    label: LocalizedText
+    price_hard: int
+    stat_effects: EffectList
 
 
 class VariableDefinitionOut(ORMModel):

@@ -4,6 +4,7 @@ from app.models.content import (  # noqa: F401
     Chapter,
     Character,
     ChoiceOption,
+    Outfit,
     SceneNode,
     Season,
     Story,
