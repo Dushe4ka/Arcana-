@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru" className="h-full">
-      <body className="min-h-full bg-neutral-100 text-neutral-900 antialiased">
+      <body className="min-h-full bg-canvas text-neutral-900 antialiased">
         <HydrateAuth />
         {children}
       </body>

@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+@theme {
+  /* Soft, warm beige page background - distinct from the white content cards/nav sitting on
+     top of it, so cards and buttons read as separate surfaces rather than blending in. */
+  --color-canvas: #f6efe1;
+}
