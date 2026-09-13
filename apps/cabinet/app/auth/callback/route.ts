@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { apiBaseUrl } from "@/lib/env";
 import { CABINET_ROUTES } from "@/lib/routes";
 import { writeSessionCookies } from "@/lib/session";
+import { requestOrigin } from "@/lib/url";
 
 /** Only these in-app paths may be used as a post-login redirect target — an open redirect here
  * would let a crafted deeplink bounce a freshly authenticated user to an attacker's site. */
@@ -13,8 +14,9 @@ export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
   const nextParam = request.nextUrl.searchParams.get("next");
   const next = nextParam && SAFE_NEXT.has(nextParam) ? nextParam : "/";
+  const origin = requestOrigin(request);
 
-  const expired = new URL("/session-expired", request.url);
+  const expired = new URL("/session-expired", origin);
   if (!code) return NextResponse.redirect(expired);
 
   let pair: { accessToken?: string; refreshToken?: string } | null = null;
@@ -33,7 +35,7 @@ export async function GET(request: NextRequest) {
   // A malformed 200 (missing either token) must not create a broken session.
   if (!pair?.accessToken || !pair?.refreshToken) return NextResponse.redirect(expired);
 
-  const response = NextResponse.redirect(new URL(next, request.url));
+  const response = NextResponse.redirect(new URL(next, origin));
   writeSessionCookies(response, { accessToken: pair.accessToken, refreshToken: pair.refreshToken });
   return response;
 }

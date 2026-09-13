@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { apiBaseUrl } from "./lib/env";
 import { AT_COOKIE, RT_COOKIE, jwtExpired, writeSessionCookies } from "./lib/session";
+import { requestOrigin } from "./lib/url";
 
 // Run on every route EXCEPT the ones that must work without a session, and static assets.
 export const config = {
@@ -57,5 +58,5 @@ function redirectExpired(request: NextRequest) {
       { status: 401 },
     );
   }
-  return NextResponse.redirect(new URL("/session-expired", request.url));
+  return NextResponse.redirect(new URL("/session-expired", requestOrigin(request)));
 }
