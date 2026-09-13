@@ -38,18 +38,21 @@ full rationale and the worked examples (Рассказчик/Маша/Иваша
   effect whose `(variable_key, character_id)` has no `VariableDefinition` row. This is why the
   existing "outfit" wardrobe feature auto-creates a `VariableDefinition` the first time a
   second outfit is added (`apps/admin/components/WardrobeMatrix.tsx`'s `onAddOutfit`) — the
-  new "Переименовать" quick action **must follow the identical pattern** for `__display_name`,
+  new "Переименовать" quick action **must follow the identical pattern** for `display_name_override`,
   or the rename will silently do nothing. Follow `onAddOutfit`'s de-dup guard
   (`locallyCreatedOutfitVariable`) shape exactly to avoid a duplicate-POST 409 on rapid re-use.
 - **`VARIABLE_KEY_RE` (`^[a-z][a-z0-9_]*$`) only gates `POST /admin/variables`'s `key` field**
   (`apps/api/app/schemas/content.py`), not `Effect.variable_key` / `Condition.variable_key`
-  (`apps/api/app/schemas/common.py`, no pattern). `__display_name` is a valid `key` for
-  `POST /admin/variables` too, since it starts with `_`, not `^[a-z]` — wait, it does NOT match
-  that regex (leading underscore). **`POST /admin/variables` for `__display_name` must go
-  through as-is with this key** — confirm this in Task 10 before relying on it; if the regex
-  rejects it, the fix is changing the key to something regex-legal (e.g. `display_name`, still
-  effectively hidden by convention/UI filtering rather than by leading underscore) rather than
-  loosening the regex for everyone. Task 10 verifies this first (see its Step 1).
+  (`apps/api/app/schemas/common.py`, no pattern). **Preflight ruling (made before Task 1 was
+  dispatched):** the original spec language used a leading-underscore key (`__display_name`),
+  which `VARIABLE_KEY_RE` rejects outright (it requires the key to start with `[a-z]`) — that
+  would have made `POST /admin/variables` 422 the moment Task 10 tried to auto-create the
+  definition. Rather than special-case the validator for one reserved family, this plan uses
+  `display_name_override` everywhere instead (Tasks 3 and 10 both already use this key, not the
+  underscore form) — it satisfies the regex as-is, so `POST /admin/variables` needs no change.
+  The key is still effectively hidden from a scenarist's normal pick-a-stat UI by convention/
+  filtering (Task 10), not by an underscore prefix. Task 10 Step 1 confirms this still holds
+  against the real regex before use, as a sanity check — it is not re-deciding the key.
 - **Money/currency:** `price_hard` and `costAmount` are always integers (crystals), never floats.
 - **All new Pydantic schemas use `CamelModel`** (snake_case Python, camelCase JSON) — see any
   existing schema in `apps/api/app/schemas/` for the pattern. All new Zod schemas go in
@@ -585,7 +588,7 @@ Claude-Session: https://claude.ai/code/session_01FDwhSQoxG53oAxvDmsNmYV"
 
 ---
 
-### Task 3: Backend — `__display_name` override in the reading engine
+### Task 3: Backend — `display_name_override` override in the reading engine
 
 **Files:**
 - Modify: `apps/api/app/services/play_service.py` (`_build_dialogue_view`)
@@ -595,11 +598,11 @@ Claude-Session: https://claude.ai/code/session_01FDwhSQoxG53oAxvDmsNmYV"
 **Interfaces:**
 - Consumes: `VariableContext.as_value_map()` (`play_service`, already loaded per-request),
   `graph.find_def` / `values` dict (`preview_service`, already in scope) — both existing,
-  no new plumbing. `variable_lookup_key("__display_name", character_id)` from
+  no new plumbing. `variable_lookup_key("display_name_override", character_id)` from
   `app.engine.condition_engine` (already imported in both files).
 - Produces: wherever a `DIALOGUE` node's speaker name is built, it now reads a
-  `__display_name` override first, falling back to `Character.name`. **This task only makes
-  the read side work.** Nothing writes a `__display_name` value yet — that's the "Переименовать"
+  `display_name_override` override first, falling back to `Character.name`. **This task only makes
+  the read side work.** Nothing writes a `display_name_override` value yet — that's the "Переименовать"
   admin action in Task 10, which must also auto-create the `VariableDefinition` (see the Global
   Constraints note on why an effect with no matching definition is silently ignored). Write
   this task's tests by inserting a `VariableDefinition`+`PlayerVariableValue` row directly
@@ -628,7 +631,7 @@ async def test_speaker_name_falls_back_to_character_name_with_no_override(
 async def test_speaker_name_uses_display_name_override_when_set(
     client, make_user, auth_headers, db_session, ...
 ):
-    # Insert a VariableDefinition(key="__display_name", character_id=<speaker>, type="STRING",
+    # Insert a VariableDefinition(key="display_name_override", character_id=<speaker>, type="STRING",
     # default_value=<original name>) and a PlayerVariableValue(user_id=<player>,
     # variable_definition_id=<that def>, value="Виктор") directly via db_session, commit, then
     # start/advance to that DIALOGUE node and assert speaker.name.ru == "Виктор".
@@ -661,7 +664,7 @@ In `_build_dialogue_view` (`apps/api/app/services/play_service.py`), after `spea
 speaker_view = None
 if speaker:
     name = speaker["name"]
-    override_key = variable_lookup_key("__display_name", data.speaker_character_id)
+    override_key = variable_lookup_key("display_name_override", data.speaker_character_id)
     override = context.as_value_map().get(override_key)
     if isinstance(override, str) and override:
         name = {"ru": override}
@@ -681,7 +684,7 @@ speaker = (
 speaker_view = None
 if speaker:
     name = speaker.name
-    override_key = variable_lookup_key("__display_name", data.speaker_character_id)
+    override_key = variable_lookup_key("display_name_override", data.speaker_character_id)
     override = values.get(override_key)
     if isinstance(override, str) and override:
         name = {"ru": override}
@@ -701,7 +704,7 @@ ruff check app seed.py tests && ruff format app seed.py tests
 
 ```bash
 git add apps/api/app/services/play_service.py apps/api/app/services/preview_service.py apps/api/tests/test_display_name_override.py
-git commit -m "feat(api): reading engine honors a __display_name override for the speaker
+git commit -m "feat(api): reading engine honors a display_name_override override for the speaker
 
 Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01FDwhSQoxG53oAxvDmsNmYV"
@@ -1164,35 +1167,30 @@ Claude-Session: https://claude.ai/code/session_01FDwhSQoxG53oAxvDmsNmYV"
 - Modify: `apps/admin/app/(app)/stories/[id]/chapters/[chapterId]/page.tsx` (handlers)
 
 **Interfaces:**
-- Consumes: `POST /admin/variables` (existing, for the one-time `__display_name` definition -
+- Consumes: `POST /admin/variables` (existing, for the one-time `display_name_override` definition -
   same call shape `WardrobeMatrix.onAddOutfit` already makes for `"outfit"`), Task 2's
   `GET /admin/characters/{id}/outfits`, `POST /admin/scene-nodes` (EFFECT / CHOICE),
   `POST /admin/choice-options`.
 - Produces: "Переименовать" button → picks a character + new name → auto-chains (same
   mechanism as Task 8) an EFFECT node with one effect
-  `{variableKey: "__display_name", characterId: <char>, op: "SET", value: <new name>}`.
+  `{variableKey: "display_name_override", characterId: <char>, op: "SET", value: <new name>}`.
   "Смена наряда" button → picks a character (must already have at least one `Outfit`) →
   auto-chains a CHOICE node whose options are built one-per-outfit from that character's
   catalog (`text: outfit.label.ru`, `costCurrency: outfit.priceHard > 0 ? "HARD" : null`,
   `costAmount: outfit.priceHard`, `effects: [{variableKey: "outfit", characterId: <char>,
   op: "SET", value: outfit.key}, ...outfit.statEffects]`).
 
-- [ ] **Step 1: Confirm `__display_name` is accepted by `POST /admin/variables`'s key validation**
+- [ ] **Step 1: Confirm `display_name_override` is accepted by `POST /admin/variables`'s key validation**
 
-Read `VARIABLE_KEY_RE` (`apps/api/app/schemas/content.py`, `^[a-z][a-z0-9_]*$`) again and
-confirm `__display_name` does NOT match it (leading underscores). Before writing any admin
-code for this step, pick ONE of:
-  (a) change the key this feature uses to something that matches the existing regex - e.g.
-      `display_name` (no leading underscore) - and rely on the admin UI simply never listing
-      it as a pickable "stat" (client-side filtering, e.g. hide any variable definition whose
-      key is exactly `display_name` from anywhere a scenarist picks a stat by hand), or
-  (b) special-case `POST /admin/variables` server-side to also accept keys matching
-      `^__[a-z][a-z0-9_]*$` for this one reserved family.
-  (a) is simpler and touches no backend validation code — **prefer (a) unless it proves
-  awkward once you're implementing the filtering**, and record which you picked and why in
-  this task's report. Whichever key you land on, use it consistently everywhere this plan
-  otherwise says `__display_name` (this step may require re-reading Task 3's code and
-  adjusting its literal string if you pick a different final key - reconcile before proceeding).
+Read `VARIABLE_KEY_RE` (`apps/api/app/schemas/content.py`, `^[a-z][a-z0-9_]*$`) and confirm
+`display_name_override` matches it (starts with a lowercase letter, rest is lowercase
+letters/digits/underscores) — it does, by design (see the Global Constraints ruling on this
+key). No backend validation change is needed. Since this key has no leading-underscore
+convention to hide it, keep it out of any UI where a scenarist picks a stat/variable by hand
+(e.g. a general "pick a variable" dropdown elsewhere in the admin panel) by filtering out
+`key === "display_name_override"` client-side wherever such a picker exists — check whether
+one already lists `VariableDefinition`s anywhere outside this feature's own flow before writing
+this filter, so it isn't added speculatively for a picker that doesn't exist yet.
 
 - [ ] **Step 2: "Переименовать" button + handler**
 
@@ -1321,11 +1319,10 @@ rather than inventing a change to commit.
 - Явно не входит (движок условий не меняется, «Список»/«Граф» остаются) → соблюдено во всех
   задачах, ни одна не трогает `condition_engine.py` или `SceneNodeType`. ✓
 
-**Placeholder scan:** No "TBD"/"handle appropriately" left. The one open decision explicitly
-deferred to implementation time (Task 10 Step 1's `__display_name` vs `display_name` key
-choice) is deferred with a concrete default recommendation and an explicit instruction to
-record which was chosen and reconcile Task 3 — not a placeholder, a scoped decision with a
-fallback.
+**Placeholder scan:** No "TBD"/"handle appropriately" left. The `VARIABLE_KEY_RE` conflict
+originally flagged against a leading-underscore key was resolved during preflight (see Global
+Constraints) by using `display_name_override` throughout Tasks 3 and 10 from the start, rather
+than leaving the key choice open for an implementer to decide mid-task.
 
 **Type consistency:** `CharacterOut`/`OutfitOut` (backend Task 1/2, frontend Task 5/6) share
 field names throughout (`firstName`, `lastName`, `isProtagonist`, `priceHard`, `statEffects`).
