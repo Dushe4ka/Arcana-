@@ -68,6 +68,8 @@ class ChapterUpdateInput(CamelModel):
 class CharacterCreateInput(CamelModel):
     story_id: str
     name: LocalizedText
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
     # Hex color used for the speaker name tag in the reader UI.
     name_color: str = Field(default="#E8B4BC", pattern=r"^#[0-9a-fA-F]{6}$")
     # Map of emotion/pose key -> sprite image URL, e.g. { neutral: "...", smile: "..." }.
@@ -76,8 +78,12 @@ class CharacterCreateInput(CamelModel):
 
 class CharacterUpdateInput(CamelModel):
     name: LocalizedText | None = None
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
     name_color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
     sprites: dict[str, str] | None = None
+    # At most one protagonist per story - enforced in characters_service.update.
+    is_protagonist: bool | None = None
 
 
 class VariableDefinitionCreateInput(CamelModel):

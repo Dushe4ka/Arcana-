@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content import Character, VariableDefinition
@@ -27,7 +28,17 @@ async def update(db: AsyncSession, character_id: str, data: CharacterUpdateInput
     character = await db.get(Character, character_id)
     if not character:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Персонаж не найден")
-    for field, value in data.model_dump(exclude_unset=True).items():
+
+    payload = data.model_dump(exclude_unset=True)
+    if payload.get("is_protagonist") is True:
+        # At most one protagonist per story - clear it from anyone else first, same transaction.
+        await db.execute(
+            sa_update(Character)
+            .where(Character.story_id == character.story_id, Character.id != character.id)
+            .values(is_protagonist=False)
+        )
+
+    for field, value in payload.items():
         setattr(character, field, value)
     await db.commit()
     await db.refresh(character)

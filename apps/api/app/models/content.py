@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -122,9 +122,13 @@ class Character(Base, UUIDPKMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("stories.id", ondelete="CASCADE")
     )
     name: Mapped[dict] = mapped_column(JSONB)
+    first_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String, nullable=True)
     name_color: Mapped[str] = mapped_column(String, default="#E8B4BC")
     # Map of emotion/pose key -> sprite image URL.
     sprites: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # At most one protagonist per story (enforced in characters_service.update).
+    is_protagonist: Mapped[bool] = mapped_column(Boolean, default=False)
 
     story: Mapped[Story] = relationship(back_populates="characters")
     variable_definitions: Mapped[list["VariableDefinition"]] = relationship(back_populates="character")

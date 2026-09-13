@@ -44,8 +44,11 @@ class CharacterOut(ORMModel):
     id: uuid.UUID
     story_id: uuid.UUID
     name: LocalizedText
+    first_name: str | None
+    last_name: str | None
     name_color: str
     sprites: dict[str, str]
+    is_protagonist: bool
 
 
 class VariableDefinitionOut(ORMModel):

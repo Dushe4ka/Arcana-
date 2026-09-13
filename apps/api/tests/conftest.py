@@ -29,7 +29,7 @@ from app.config import settings
 from app.core.security import create_access_token, hash_password
 from app.database import Base, get_db
 from app.main import app
-from app.models.content import Chapter, Season, Story
+from app.models.content import Chapter, Character, Season, Story
 from app.models.economy import Wallet
 from app.models.user import User
 from app.services.auth_service import STARTING_ENERGY, STARTING_SOFT_CURRENCY
@@ -148,3 +148,37 @@ async def make_chapter(db_session: AsyncSession):
         return chapter
 
     return _make_chapter
+
+
+@pytest_asyncio.fixture
+async def make_story(db_session: AsyncSession):
+    async def _make_story(*, genre: str = "ROMANCE") -> Story:
+        story = Story(
+            slug=f"test-story-{uuid.uuid4().hex[:8]}",
+            title={"ru": "Тестовая история"},
+            genre=genre,
+        )
+        db_session.add(story)
+        await db_session.flush()
+        await db_session.refresh(story)
+        return story
+
+    return _make_story
+
+
+@pytest_asyncio.fixture
+async def make_character(db_session: AsyncSession):
+    async def _make_character(
+        story: Story, *, name: dict | None = None, is_protagonist: bool = False
+    ) -> Character:
+        character = Character(
+            story_id=story.id,
+            name=name or {"ru": "Тестовый персонаж"},
+            is_protagonist=is_protagonist,
+        )
+        db_session.add(character)
+        await db_session.flush()
+        await db_session.refresh(character)
+        return character
+
+    return _make_character

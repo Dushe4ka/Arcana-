@@ -47,6 +47,8 @@ export type ChapterUpdateInput = z.infer<typeof chapterUpdateSchema>;
 export const characterCreateSchema = z.object({
   storyId: z.string().uuid(),
   name: localizedTextSchema,
+  firstName: z.string().max(80).optional(),
+  lastName: z.string().max(80).optional(),
   /** Hex color used for the speaker name tag in the reader UI. */
   nameColor: z
     .string()
