@@ -142,6 +142,17 @@ function StagedSprite({ staged }: { staged: StagedCharacterView }) {
   );
 }
 
+function resolveBoxPosition(
+  speaker: { id: string } | null,
+  staged: { characterId: string; position: "left" | "center" | "right" }[],
+): "left" | "center" | "right" {
+  if (!speaker) return "center"; // narrator
+  const own = staged.find((s) => s.characterId === speaker.id);
+  return own?.position ?? "right"; // speaking but not staged - default to "right" (see spec:
+  // the quick-add toolbar in Task 8 always stages the speaker, so this default is a rare
+  // defensive fallback, not the common path)
+}
+
 function DialogueBox({
   view,
   busy,
@@ -149,8 +160,17 @@ function DialogueBox({
   view: Extract<PlayView, { type: "DIALOGUE" }>;
   busy: boolean;
 }) {
+  const boxPosition = resolveBoxPosition(view.speaker, view.staged);
   return (
-    <View style={[styles.dialogueBox, view.isThought && styles.thoughtBox]}>
+    <View
+      style={[
+        styles.dialogueBox,
+        boxPosition === "left" && styles.dialogueBoxLeft,
+        boxPosition === "center" && styles.dialogueBoxCenter,
+        boxPosition === "right" && styles.dialogueBoxRight,
+        view.isThought && styles.thoughtBox,
+      ]}
+    >
       {view.speaker ? (
         <Text style={[styles.speakerName, { color: view.speaker.nameColor }]}>{t(view.speaker.name)}</Text>
       ) : null}
@@ -231,6 +251,9 @@ const styles = StyleSheet.create({
     minHeight: 120,
     gap: 8,
   },
+  dialogueBoxLeft: { width: "78%", alignSelf: "flex-start" },
+  dialogueBoxCenter: { width: "100%", alignSelf: "center" },
+  dialogueBoxRight: { width: "78%", alignSelf: "flex-end" },
   thoughtBox: {
     borderColor: colors.accentMuted,
     borderStyle: "dashed",

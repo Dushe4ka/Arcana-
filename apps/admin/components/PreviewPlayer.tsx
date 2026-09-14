@@ -198,6 +198,17 @@ function StagedSprite({ staged }: { staged: StagedCharacterView }) {
   );
 }
 
+function resolveBoxPosition(
+  speaker: { id: string } | null,
+  staged: { characterId: string; position: "left" | "center" | "right" }[],
+): "left" | "center" | "right" {
+  if (!speaker) return "center"; // narrator
+  const own = staged.find((s) => s.characterId === speaker.id);
+  return own?.position ?? "right"; // speaking but not staged - default to "right" (see spec:
+  // the quick-add toolbar in Task 8 always stages the speaker, so this default is a rare
+  // defensive fallback, not the common path)
+}
+
 function DialogueBox({
   view,
   onAdvance,
@@ -207,11 +218,18 @@ function DialogueBox({
   onAdvance: () => void;
   busy: boolean;
 }) {
+  const boxPosition = resolveBoxPosition(view.speaker, view.staged);
+  const posClass =
+    boxPosition === "left"
+      ? "mr-auto w-[78%]"
+      : boxPosition === "right"
+        ? "ml-auto w-[78%]"
+        : "w-full";
   return (
     <button
       onClick={onAdvance}
       disabled={!view.canAdvance || busy}
-      className={`w-full rounded-lg border p-4 text-left ${
+      className={`block rounded-lg border p-4 text-left ${posClass} ${
         view.isThought ? "border-dashed border-neutral-400" : "border-neutral-300"
       } bg-black/80 disabled:cursor-default`}
     >
