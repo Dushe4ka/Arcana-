@@ -171,12 +171,18 @@ def _walk(
             speaker = (
                 graph.characters_by_id.get(data.speaker_character_id) if data.speaker_character_id else None
             )
+            speaker_view = None
+            if speaker:
+                name = speaker.name
+                override_key = variable_lookup_key("display_name_override", data.speaker_character_id)
+                override = values.get(override_key)
+                if isinstance(override, str) and override:
+                    name = {"ru": override}
+                speaker_view = {"id": str(speaker.id), "name": name, "nameColor": speaker.name_color}
             view = {
                 "type": "DIALOGUE",
                 "nodeId": str(node.id),
-                "speaker": {"id": str(speaker.id), "name": speaker.name, "nameColor": speaker.name_color}
-                if speaker
-                else None,
+                "speaker": speaker_view,
                 "text": data.text.model_dump(),
                 "isThought": data.is_thought,
                 "backgroundImageUrl": background_url,

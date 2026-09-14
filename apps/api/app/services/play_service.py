@@ -204,6 +204,14 @@ async def _build_dialogue_view(
     characters = await _get_character_summaries(db, story_id)
 
     speaker = characters.get(data.speaker_character_id) if data.speaker_character_id else None
+    speaker_view = None
+    if speaker:
+        name = speaker["name"]
+        override_key = variable_lookup_key("display_name_override", data.speaker_character_id)
+        override = context.as_value_map().get(override_key)
+        if isinstance(override, str) and override:
+            name = {"ru": override}
+        speaker_view = {"id": speaker["id"], "name": name, "nameColor": speaker["nameColor"]}
     staged = await _resolve_staged_characters(db, story_id, data.staged, context)
 
     # A background persists across nodes until a node explicitly sets a new one - authors
@@ -219,13 +227,7 @@ async def _build_dialogue_view(
     return {
         "type": "DIALOGUE",
         "nodeId": str(node_id),
-        "speaker": {
-            "id": speaker["id"],
-            "name": speaker["name"],
-            "nameColor": speaker["nameColor"],
-        }
-        if speaker
-        else None,
+        "speaker": speaker_view,
         "text": data.text.model_dump(),
         "isThought": data.is_thought,
         "backgroundImageUrl": background_url,
