@@ -309,20 +309,35 @@ function CharactersSection({
   onChanged: () => void;
 }) {
   const [showCreate, setShowCreate] = useState(false);
-  const [nameRu, setNameRu] = useState("");
+  const [firstNameRu, setFirstNameRu] = useState("");
   const [lastNameRu, setLastNameRu] = useState("");
+  const [displayNameRu, setDisplayNameRu] = useState("");
+  const [displayNameTouched, setDisplayNameTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingProtagonistId, setPendingProtagonistId] = useState<string | null>(null);
 
+  const onFirstNameChange = (value: string) => {
+    setFirstNameRu(value);
+    if (!displayNameTouched) {
+      setDisplayNameRu(value);
+    }
+  };
+
+  const onDisplayNameChange = (value: string) => {
+    setDisplayNameTouched(true);
+    setDisplayNameRu(value);
+  };
+
   const onCreateCharacter = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmedName = nameRu.trim();
+    const trimmedFirstName = firstNameRu.trim();
     const trimmedLastName = lastNameRu.trim();
+    const trimmedDisplayName = displayNameRu.trim();
     const parsed = characterCreateSchema.safeParse({
       storyId,
-      name: { ru: trimmedName },
-      firstName: trimmedName || undefined,
+      name: { ru: trimmedDisplayName },
+      firstName: trimmedFirstName || undefined,
       lastName: trimmedLastName || undefined,
     });
     if (!parsed.success) {
@@ -332,8 +347,10 @@ function CharactersSection({
     try {
       await apiRequest("/admin/characters", { method: "POST", body: JSON.stringify(parsed.data) });
       setShowCreate(false);
-      setNameRu("");
+      setFirstNameRu("");
       setLastNameRu("");
+      setDisplayNameRu("");
+      setDisplayNameTouched(false);
       onChanged();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось создать персонажа");
@@ -366,17 +383,19 @@ function CharactersSection({
       </div>
 
       {showCreate && (
-        <form onSubmit={onCreateCharacter} className="flex items-end gap-3 rounded border border-neutral-200 bg-white p-4">
-          <div className="flex-1">
+        <form onSubmit={onCreateCharacter} className="flex flex-wrap items-end gap-3 rounded border border-neutral-200 bg-white p-4">
+          <div className="flex-1 basis-48">
             <label className="block text-sm text-neutral-600">Имя</label>
             <input
-              value={nameRu}
-              onChange={(e) => setNameRu(e.target.value)}
+              value={firstNameRu}
+              onChange={(e) => onFirstNameChange(e.target.value)}
               className="mt-1 w-full rounded border border-neutral-300 px-3 py-2"
             />
-            <p className="mt-1 text-xs text-neutral-500">Показывается игрокам как имя персонажа</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              Внутреннее имя для админки — списки, поиск. Игрок его не видит.
+            </p>
           </div>
-          <div className="flex-1">
+          <div className="flex-1 basis-48">
             <label className="block text-sm text-neutral-600">Фамилия (необязательно)</label>
             <input
               value={lastNameRu}
@@ -384,6 +403,17 @@ function CharactersSection({
               className="mt-1 w-full rounded border border-neutral-300 px-3 py-2"
             />
             <p className="mt-1 text-xs text-neutral-500">Только для админки, игрокам не показывается</p>
+          </div>
+          <div className="flex-1 basis-48">
+            <label className="block text-sm text-neutral-600">Отображаемое имя</label>
+            <input
+              value={displayNameRu}
+              onChange={(e) => onDisplayNameChange(e.target.value)}
+              className="mt-1 w-full rounded border border-neutral-300 px-3 py-2"
+            />
+            <p className="mt-1 text-xs text-neutral-500">
+              То, что видит игрок. По умолчанию совпадает с «Имя», но можно задать по-другому.
+            </p>
           </div>
           <button type="submit" className="rounded bg-neutral-900 px-3 py-2 text-sm text-white">
             Создать
