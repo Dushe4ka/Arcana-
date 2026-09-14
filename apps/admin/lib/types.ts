@@ -48,6 +48,15 @@ export type CharacterOut = {
   sprites: Record<string, string>;
 };
 
+export type OutfitOut = {
+  id: string;
+  characterId: string;
+  key: string;
+  label: LocalizedText;
+  priceHard: number;
+  statEffects: Array<{ variableKey: string; characterId: string | null; op: string; value: number | boolean | string }>;
+};
+
 export type VariableDefinitionOut = {
   id: string;
   storyId: string;

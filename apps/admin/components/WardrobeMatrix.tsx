@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
-import type { CharacterOut, VariableDefinitionOut } from "@/lib/types";
+import type { CharacterOut, OutfitOut, VariableDefinitionOut } from "@/lib/types";
+import { EffectRowsEditor, parseValue, type EffectRow } from "./EffectRowsEditor";
 
 const SLUG_RE = /^[a-z][a-z0-9]*$/;
 /** Sentinel for the "no outfit" column - a bare sprite key (no `_` prefix) lives here. Never
@@ -37,6 +38,17 @@ function spriteKey(outfit: string, pose: string): string {
   return outfit === BASE_OUTFIT ? pose : `${outfit}_${pose}`;
 }
 
+/** Russian noun pluralization has three forms (1 бонус / 2-4 бонуса / 5+ бонусов, with the
+ * usual "11-14 always take the many-form" exception) - a naive `n === 1 ? one : many` would
+ * mislabel "5 бонуса" instead of "5 бонусов". */
+function ruPlural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+  return many;
+}
+
 export function WardrobeMatrix({
   character,
   storyId,
@@ -56,11 +68,51 @@ export function WardrobeMatrix({
   const [error, setError] = useState<string | null>(null);
   const [addingOutfit, setAddingOutfit] = useState(false);
   const [locallyCreatedOutfitVariable, setLocallyCreatedOutfitVariable] = useState(false);
+  // Price/stat-effects metadata for outfit columns, keyed by outfit key - a separate `Outfit`
+  // row per `(character, key)` pair, fetched independently since `onChanged()` only refreshes
+  // the parent's `StoryDetailOut`, which doesn't include outfit rows. `character.sprites` is
+  // still the source of truth for *pose* cells, but an outfit's *column* can now also exist
+  // purely because it has an `Outfit` row, with no sprite uploaded for it yet (see `outfits`
+  // below).
+  const [outfitRows, setOutfitRows] = useState<OutfitOut[]>([]);
+  // Gates the edit toggle below: until the initial fetch resolves, `outfitRows` being empty is
+  // indistinguishable from "this character genuinely has no outfit rows yet", and the toggle's
+  // lazy-create-if-missing logic would otherwise risk POSTing a duplicate row for a column that
+  // already has one server-side but hasn't loaded into state yet.
+  const [outfitsLoaded, setOutfitsLoaded] = useState(false);
+  const [editingOutfitKey, setEditingOutfitKey] = useState<string | null>(null);
 
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<OutfitOut[]>(`/admin/characters/${character.id}/outfits`)
+      .then((rows) => {
+        if (!cancelled) setOutfitRows(rows);
+      })
+      .catch(() => {
+        // Outfit pricing is supplementary metadata - a failed fetch shouldn't block the sprite
+        // grid itself from rendering, so it's swallowed rather than surfaced via `error`.
+      })
+      .finally(() => {
+        if (!cancelled) setOutfitsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [character.id]);
+
+  // An outfit column can now exist for two independent reasons: a sprite was uploaded under its
+  // `${outfit}_${pose}` prefix (`derived.outfits`), or an `Outfit` row was created for it via
+  // "+ Добавить наряд" or the price/stat editor's lazy-create, whether or not any sprite has
+  // been uploaded yet (`outfitRows`). Without folding `outfitRows` in here, an outfit added
+  // purely for its price/bonuses (no art yet) would vanish from the grid on the very next
+  // reload - its `Outfit` row would still exist server-side, but nothing would derive a column
+  // for it, stranding that priced/bonused outfit with no way to reach its own editor again.
+  const persistedOutfitKeys = outfitRows.map((o) => o.key);
   const outfits = [
     BASE_OUTFIT,
     ...derived.outfits,
-    ...extraOutfits.filter((o) => !derived.outfits.includes(o)),
+    ...persistedOutfitKeys.filter((k) => k !== BASE_OUTFIT && !derived.outfits.includes(k)),
+    ...extraOutfits.filter((o) => !derived.outfits.includes(o) && !persistedOutfitKeys.includes(o)),
   ];
   const poses = Array.from(new Set([...derived.poses, ...extraPoses]));
 
@@ -113,6 +165,17 @@ export function WardrobeMatrix({
         // the parent's async refetch to land.
         setLocallyCreatedOutfitVariable(true);
       }
+      // Mirrors `hasOutfitVariable` above: `outfitRows` is this component's own fetched state
+      // (not a parent prop), but checking it before POSTing still guards against creating a
+      // duplicate `Outfit` row for the same key if this ever runs twice for the same name.
+      const hasOutfitRow = outfitRows.some((o) => o.key === name);
+      if (!hasOutfitRow) {
+        const created = await apiRequest<OutfitOut>(`/admin/characters/${character.id}/outfits`, {
+          method: "POST",
+          body: JSON.stringify({ key: name, label: { ru: name } }),
+        });
+        setOutfitRows((prev) => [...prev, created]);
+      }
       setExtraOutfits((prev) => [...prev, name]);
       setNewOutfitName("");
       onChanged();
@@ -121,6 +184,32 @@ export function WardrobeMatrix({
     } finally {
       setAddingOutfit(false);
     }
+  };
+
+  // Every real outfit column should have a backing `Outfit` row so its price/stat-effects
+  // editor has something to PATCH - `onAddOutfit` creates one going forward, but a column
+  // whose sprite key predates this feature (or a legacy hand-uploaded key) may not have one
+  // yet, so the edit toggle lazily creates it on first open rather than failing silently.
+  const onToggleOutfitEditor = async (outfit: string) => {
+    if (editingOutfitKey === outfit) {
+      setEditingOutfitKey(null);
+      return;
+    }
+    if (!outfitsLoaded) return;
+    setError(null);
+    if (!outfitRows.some((o) => o.key === outfit)) {
+      try {
+        const created = await apiRequest<OutfitOut>(`/admin/characters/${character.id}/outfits`, {
+          method: "POST",
+          body: JSON.stringify({ key: outfit, label: { ru: outfit } }),
+        });
+        setOutfitRows((prev) => [...prev, created]);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Не удалось подготовить наряд для редактирования");
+        return;
+      }
+    }
+    setEditingOutfitKey(outfit);
   };
 
   const onAddPose = () => {
@@ -181,9 +270,22 @@ export function WardrobeMatrix({
               {outfits.map((outfit) => (
                 <th
                   key={outfit || "base"}
-                  className="border border-neutral-200 bg-neutral-50 px-2 py-1 font-medium"
+                  className="border border-neutral-200 bg-neutral-50 px-2 py-1 align-top font-medium"
                 >
-                  {outfit === BASE_OUTFIT ? "Без наряда" : outfit}
+                  {outfit === BASE_OUTFIT ? (
+                    "Без наряда"
+                  ) : (
+                    <OutfitColumnHeader
+                      outfitKey={outfit}
+                      outfitRow={outfitRows.find((o) => o.key === outfit)}
+                      outfitsLoaded={outfitsLoaded}
+                      isEditing={editingOutfitKey === outfit}
+                      onToggle={() => onToggleOutfitEditor(outfit)}
+                      onSaved={(updated) =>
+                        setOutfitRows((prev) => prev.map((o) => (o.id === updated.id ? updated : o)))
+                      }
+                    />
+                  )}
                 </th>
               ))}
             </tr>
@@ -314,6 +416,182 @@ function WardrobeCell({
       />
       {uploading && <p className="text-[10px] text-neutral-500">Загрузка…</p>}
       {error && <p className="text-[10px] text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+/** Column header for one real outfit: its key, a compact price/bonus summary so the state is
+ * visible without opening the editor, and the "✎" toggle that opens `OutfitPricingEditor`. */
+function OutfitColumnHeader({
+  outfitKey,
+  outfitRow,
+  outfitsLoaded,
+  isEditing,
+  onToggle,
+  onSaved,
+}: {
+  outfitKey: string;
+  outfitRow: OutfitOut | undefined;
+  outfitsLoaded: boolean;
+  isEditing: boolean;
+  onToggle: () => void;
+  onSaved: (updated: OutfitOut) => void;
+}) {
+  const summary = outfitRow
+    ? outfitRow.priceHard > 0
+      ? `${outfitRow.priceHard} 💎`
+      : "Бесплатно"
+    : null;
+  const bonusCount = outfitRow?.statEffects.length ?? 0;
+
+  return (
+    <div className="flex flex-col items-center gap-0.5 font-normal normal-case">
+      <span className="font-medium">{outfitKey}</span>
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={!outfitsLoaded}
+        className="whitespace-nowrap text-[10px] font-normal text-neutral-500 underline disabled:cursor-wait disabled:opacity-50"
+      >
+        ✎ Цена и бонусы
+      </button>
+      {summary && (
+        <span className="text-[10px] text-neutral-500">
+          {summary}
+          {bonusCount > 0 ? ` · +${bonusCount} ${ruPlural(bonusCount, "бонус", "бонуса", "бонусов")}` : ""}
+        </span>
+      )}
+      {isEditing && outfitRow && (
+        <OutfitPricingEditor outfit={outfitRow} onSaved={onSaved} onClose={onToggle} />
+      )}
+    </div>
+  );
+}
+
+/** Inline price + stat-effects form for one outfit, opened from `OutfitColumnHeader`. Saves via
+ * `PATCH /admin/outfits/{id}`; reuses `EffectRowsEditor` for `statEffects` rather than a
+ * bespoke rows editor (same component `NodeEditorPanel` uses for choice-option effects). */
+function OutfitPricingEditor({
+  outfit,
+  onSaved,
+  onClose,
+}: {
+  outfit: OutfitOut;
+  onSaved: (updated: OutfitOut) => void;
+  onClose: () => void;
+}) {
+  const [labelRu, setLabelRu] = useState(outfit.label.ru || outfit.key);
+  // Kept as raw text rather than a parsed number so the field can hold transient states while
+  // typing (an emptied field, a bare "-") without snapping back to "0" mid-edit; `priceHard`
+  // below derives the actual clamped integer from it, computed fresh on every render and used
+  // both for display (the "0 = «Бесплатно»" hint) and for the save payload.
+  const [priceInput, setPriceInput] = useState(String(outfit.priceHard));
+  const [rows, setRows] = useState<EffectRow[]>(
+    outfit.statEffects.map((e) => ({
+      variableKey: e.variableKey,
+      characterId: e.characterId,
+      op: e.op,
+      value: String(e.value),
+    })),
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // This popover renders inside a wardrobe-grid `<th>`, growing the header row well past a
+  // typical viewport height once expressions/outfits pile up - without this, "Сохранить" can
+  // land below the fold immediately on open, with nothing on screen suggesting more scrolling
+  // is needed (caught via a live check: an automated click on "+ Добавить эффект" landed
+  // exactly where the button *would* be onscreen, but the button itself had already been pushed
+  // out of view).
+  useEffect(() => {
+    rootRef.current?.scrollIntoView({ block: "nearest" });
+    // Re-run whenever a row is added/removed too - each one grows or shrinks the popover, so
+    // "nearest" needs to be recomputed against the new height rather than just the initial one.
+  }, [rows.length]);
+
+  // `priceHard` is always a non-negative integer number of crystals - round away any
+  // fractional/invalid input rather than letting anything else reach the backend (price_hard is
+  // a Pydantic `int` with `ge=0`).
+  const parsedPrice = Math.round(Number(priceInput));
+  const priceHard = Number.isFinite(parsedPrice) ? Math.max(0, parsedPrice) : 0;
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await apiRequest<OutfitOut>(`/admin/outfits/${outfit.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          label: { ru: labelRu.trim() || outfit.key },
+          priceHard,
+          statEffects: rows.map((r) => ({
+            variableKey: r.variableKey,
+            characterId: r.characterId,
+            op: r.op,
+            value: parseValue(r.value),
+          })),
+        }),
+      });
+      onSaved(updated);
+      onClose();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Не удалось сохранить наряд");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      ref={rootRef}
+      className="mt-1 w-56 space-y-2 rounded border border-neutral-300 bg-white p-2 text-left normal-case shadow-md"
+      // Keeps clicks/typing inside the popover from bubbling to anything the header row might
+      // have (there isn't one today, but this popover lives inside a <th> of a sortable-looking
+      // table and should stay inert to ancestor click handlers regardless).
+      onClick={(e) => e.stopPropagation()}
+    >
+      <label className="block text-[10px] text-neutral-600">
+        Название для игрока
+        <input
+          value={labelRu}
+          onChange={(e) => setLabelRu(e.target.value)}
+          placeholder={outfit.key}
+          className="mt-0.5 w-full rounded border border-neutral-300 px-2 py-1 text-xs"
+        />
+      </label>
+      <label className="block text-[10px] text-neutral-600">
+        Цена в кристаллах
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          step={1}
+          value={priceInput}
+          onChange={(e) => setPriceInput(e.target.value)}
+          className="mt-0.5 w-full rounded border border-neutral-300 px-2 py-1 text-xs"
+        />
+      </label>
+      {priceHard === 0 && <p className="text-[10px] text-neutral-500">0 = «Бесплатно»</p>}
+      <div>
+        <p className="mb-1 text-[10px] text-neutral-600">Бонусы при выборе наряда</p>
+        <EffectRowsEditor rows={rows} onChange={setRows} />
+      </div>
+      {error && <p className="text-[10px] text-red-600">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded bg-neutral-900 px-2 py-1 text-[10px] text-white disabled:opacity-50"
+        >
+          {saving ? "Сохранение…" : "Сохранить"}
+        </button>
+        <button type="button" onClick={onClose} className="text-[10px] text-neutral-600 underline">
+          Отмена
+        </button>
+      </div>
     </div>
   );
 }
