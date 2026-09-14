@@ -229,21 +229,25 @@ function DialogueBox({
     <button
       onClick={onAdvance}
       disabled={!view.canAdvance || busy}
-      className={`block rounded-lg border p-4 text-left ${posClass} ${
-        view.isThought ? "border-dashed border-neutral-400" : "border-neutral-300"
-      } bg-black/80 disabled:cursor-default`}
+      className="block w-full text-left disabled:cursor-default"
     >
-      {view.speaker && (
-        <p className="mb-1 text-sm font-bold" style={{ color: view.speaker.nameColor }}>
-          {view.speaker.name.ru}
+      <div
+        className={`rounded-lg border p-4 ${posClass} ${
+          view.isThought ? "border-dashed border-neutral-400" : "border-neutral-300"
+        } bg-black/80`}
+      >
+        {view.speaker && (
+          <p className="mb-1 text-sm font-bold" style={{ color: view.speaker.nameColor }}>
+            {view.speaker.name.ru}
+          </p>
+        )}
+        <p className={`text-sm leading-relaxed text-white ${view.isThought ? "italic text-neutral-300" : ""}`}>
+          {view.text.ru}
         </p>
-      )}
-      <p className={`text-sm leading-relaxed text-white ${view.isThought ? "italic text-neutral-300" : ""}`}>
-        {view.text.ru}
-      </p>
-      {view.canAdvance && (
-        <p className="mt-1 text-right text-xs text-neutral-400">▼ нажмите, чтобы продолжить</p>
-      )}
+        {view.canAdvance && (
+          <p className="mt-1 text-right text-xs text-neutral-400">▼ нажмите, чтобы продолжить</p>
+        )}
+      </div>
     </button>
   );
 }
