@@ -5,6 +5,31 @@ import { useState } from "react";
 import { apiRequest, ApiError } from "@/lib/api";
 import type { ChoiceOptionOut, CharacterOut, SceneNodeOut } from "@/lib/types";
 import { EffectRowsEditor, parseValue, type EffectRow } from "./EffectRowsEditor";
+import { ImageUpload } from "./ImageUpload";
+
+const STAGE_POSITIONS = [
+  { value: "left", label: "Слева" },
+  { value: "center", label: "По центру" },
+  { value: "right", label: "Справа" },
+] as const;
+
+type StagePosition = (typeof STAGE_POSITIONS)[number]["value"];
+
+type StagedRow = { characterId: string; sprite: string; position: StagePosition };
+
+/** Extracts the set of pose names available for a character from its `sprites` keys - a
+ * scoped-down twin of `WardrobeMatrix`'s `deriveAxes` that only needs the pose axis (no
+ * outfit selection happens in this form). Keeps the same split rule (first underscore
+ * separates `${outfit}_${pose}`, no underscore means a bare pose) so a pose picked here lines
+ * up with the same pose names shown in the wardrobe grid. */
+function derivePoses(sprites: Record<string, string>): string[] {
+  const poses = new Set<string>();
+  for (const key of Object.keys(sprites)) {
+    const underscoreIndex = key.indexOf("_");
+    poses.add(underscoreIndex === -1 ? key : key.slice(underscoreIndex + 1));
+  }
+  return Array.from(poses);
+}
 
 function NextNodeSelect({
   value,
@@ -92,12 +117,46 @@ function DialogueForm({
     speakerCharacterId?: string | null;
     text?: { ru?: string };
     isThought?: boolean;
+    backgroundImageUrl?: string | null;
+    staged?: StagedRow[];
     nextNodeId?: string | null;
   };
   const [speakerCharacterId, setSpeakerCharacterId] = useState<string | null>(data.speakerCharacterId ?? null);
   const [textRu, setTextRu] = useState(data.text?.ru ?? "");
   const [isThought, setIsThought] = useState(Boolean(data.isThought));
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | null>(data.backgroundImageUrl ?? null);
+  const [staged, setStaged] = useState<StagedRow[]>(data.staged ?? []);
   const [nextNodeId, setNextNodeId] = useState<string | null>(data.nextNodeId ?? null);
+
+  // Seeds the staged list with the speaker exactly once, the first time a speaker is picked
+  // while staged is still empty - not on every speaker change, so it never clobbers a staged
+  // list the author has already customized (including one they've since emptied out).
+  const [stagedSeeded, setStagedSeeded] = useState((data.staged ?? []).length > 0);
+  const onSpeakerChange = (value: string | null) => {
+    setSpeakerCharacterId(value);
+    if (stagedSeeded || !value) return;
+    setStagedSeeded(true);
+    setStaged((current) => {
+      if (current.length > 0) return current;
+      const character = characters.find((c) => c.id === value);
+      const poses = character ? derivePoses(character.sprites) : [];
+      return [{ characterId: value, sprite: poses[0] ?? "neutral", position: "center" }];
+    });
+  };
+
+  const updateStagedRow = (index: number, patch: Partial<StagedRow>) => {
+    setStaged((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  };
+  const addStagedRow = () => {
+    setStagedSeeded(true);
+    const fallback = characters[0];
+    const poses = fallback ? derivePoses(fallback.sprites) : [];
+    setStaged((rows) => [...rows, { characterId: fallback?.id ?? "", sprite: poses[0] ?? "neutral", position: "center" }]);
+  };
+  const removeStagedRow = (index: number) => {
+    setStagedSeeded(true);
+    setStaged((rows) => rows.filter((_, i) => i !== index));
+  };
 
   return (
     <div className="space-y-2">
@@ -105,7 +164,7 @@ function DialogueForm({
         <label className="block text-xs text-neutral-600">Говорит</label>
         <select
           value={speakerCharacterId ?? ""}
-          onChange={(e) => setSpeakerCharacterId(e.target.value || null)}
+          onChange={(e) => onSpeakerChange(e.target.value || null)}
           className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
         >
           <option value="">(рассказчик)</option>
@@ -129,6 +188,81 @@ function DialogueForm({
         <input type="checkbox" checked={isThought} onChange={(e) => setIsThought(e.target.checked)} />
         Мысли (не речь)
       </label>
+      <ImageUpload
+        label="Фон (необязательно — наследуется от предыдущей реплики)"
+        currentUrl={backgroundImageUrl}
+        onUploaded={setBackgroundImageUrl}
+      />
+      {backgroundImageUrl && (
+        <button
+          type="button"
+          onClick={() => setBackgroundImageUrl(null)}
+          className="text-xs text-red-600 underline"
+        >
+          Убрать фон (снова наследовать)
+        </button>
+      )}
+      <div className="space-y-2 border-t border-neutral-200 pt-3">
+        <span className="block text-xs font-medium text-neutral-600">Кто на экране</span>
+        {staged.map((row, i) => {
+          const stagedCharacter = characters.find((c) => c.id === row.characterId);
+          const poses = stagedCharacter ? derivePoses(stagedCharacter.sprites) : [];
+          return (
+            <div key={i} className="flex flex-wrap items-center gap-2 rounded border border-neutral-200 p-2 text-sm">
+              <select
+                aria-label="Персонаж"
+                value={row.characterId}
+                onChange={(e) => {
+                  const nextCharacter = characters.find((c) => c.id === e.target.value);
+                  const nextPoses = nextCharacter ? derivePoses(nextCharacter.sprites) : [];
+                  // Reset the pose too - the previous character's pose name may not exist for
+                  // the newly selected one, which would otherwise leave the sprite select
+                  // holding a value absent from its own options.
+                  updateStagedRow(i, { characterId: e.target.value, sprite: nextPoses[0] ?? "neutral" });
+                }}
+                className="rounded border border-neutral-300 px-2 py-1"
+              >
+                {characters.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name.ru}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Поза"
+                value={row.sprite}
+                onChange={(e) => updateStagedRow(i, { sprite: e.target.value })}
+                className="rounded border border-neutral-300 px-2 py-1"
+              >
+                {poses.length === 0 && <option value={row.sprite}>{row.sprite}</option>}
+                {poses.map((pose) => (
+                  <option key={pose} value={pose}>
+                    {pose}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Позиция"
+                value={row.position}
+                onChange={(e) => updateStagedRow(i, { position: e.target.value as StagePosition })}
+                className="rounded border border-neutral-300 px-2 py-1"
+              >
+                {STAGE_POSITIONS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={() => removeStagedRow(i)} className="text-red-600 underline">
+                Удалить
+              </button>
+            </div>
+          );
+        })}
+        <button type="button" onClick={addStagedRow} className="text-sm text-neutral-600 underline">
+          + Добавить
+        </button>
+      </div>
       <div>
         <label className="block text-xs text-neutral-600">Следующий узел</label>
         <NextNodeSelect value={nextNodeId} allNodes={allNodes} excludeNodeId={node.id} onChange={setNextNodeId} />
@@ -140,6 +274,8 @@ function DialogueForm({
             speakerCharacterId,
             text: { ru: textRu },
             isThought,
+            backgroundImageUrl,
+            staged,
             nextNodeId,
           })
         }
