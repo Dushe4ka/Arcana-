@@ -41,6 +41,9 @@ export type CharacterOut = {
   id: string;
   storyId: string;
   name: LocalizedText;
+  firstName: string | null;
+  lastName: string | null;
+  isProtagonist: boolean;
   nameColor: string;
   sprites: Record<string, string>;
 };
