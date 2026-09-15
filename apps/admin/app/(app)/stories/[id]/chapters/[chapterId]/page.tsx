@@ -44,6 +44,12 @@ export default function SceneEditorPage() {
   }, [chapterId]);
 
   const [mutationError, setMutationError] = useState<string | null>(null);
+  // Guards against the stale-closure race on rapid QuickAddToolbar clicks: without this, two
+  // clicks fired before the first's create+patch round-trip resolves would both read the same
+  // `nodes` snapshot (same `previousLastNode`, same `order: nodes.length`), and the second
+  // click's PATCH would overwrite the first's `nextNodeId` write, orphaning one new node from
+  // the chain. Also doubles as in-flight feedback (toolbar buttons disable while true).
+  const [isAddingDialogue, setIsAddingDialogue] = useState(false);
 
   const onCreateNode = async (type: SceneNodeOut["type"]) => {
     const defaultDataByType: Record<SceneNodeOut["type"], object> = {
@@ -97,6 +103,8 @@ export default function SceneEditorPage() {
   // apps/api/app/schemas/content.py) - so "chaining" the new node after the chapter's current
   // last node means PATCHing that PREVIOUS node's `data.nextNodeId`, not the new node's.
   const onAddDialogue = async (characterId: string | null) => {
+    if (isAddingDialogue) return;
+    setIsAddingDialogue(true);
     try {
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
       const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
@@ -112,34 +120,60 @@ export default function SceneEditorPage() {
           ]
         : [];
 
-      const newNode = await apiRequest<SceneNodeOut>("/admin/scene-nodes", {
-        method: "POST",
-        body: JSON.stringify({
-          type: "DIALOGUE",
-          chapterId,
-          order: nodes.length,
-          data: {
-            speakerCharacterId: characterId,
-            text: { ru: "…" },
-            staged,
-          },
-        }),
-      });
-
-      if (previousLastNode) {
-        // Re-send the previous node's full existing `data`, only changing `nextNodeId` -
-        // matches the full-object-resend convention used by every other save path in this
-        // codebase (e.g. EffectForm/DialogueForm in NodeEditorPanel.tsx).
-        await apiRequest(`/admin/scene-nodes/${previousLastNode.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ data: { ...previousLastNode.data, nextNodeId: newNode.id } }),
+      let newNode: SceneNodeOut;
+      try {
+        newNode = await apiRequest<SceneNodeOut>("/admin/scene-nodes", {
+          method: "POST",
+          body: JSON.stringify({
+            type: "DIALOGUE",
+            chapterId,
+            order: nodes.length,
+            data: {
+              speakerCharacterId: characterId,
+              text: { ru: "…" },
+              staged,
+            },
+          }),
         });
+      } catch (err) {
+        // POST itself failed - nothing was created, so there's nothing to reload or select.
+        setMutationError(err instanceof ApiError ? err.message : "Не удалось добавить реплику");
+        return;
+      }
+
+      try {
+        if (previousLastNode) {
+          // Re-send the previous node's full existing `data`, only changing `nextNodeId` -
+          // matches the full-object-resend convention used by every other save path in this
+          // codebase (e.g. EffectForm/DialogueForm in NodeEditorPanel.tsx).
+          await apiRequest(`/admin/scene-nodes/${previousLastNode.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ data: { ...previousLastNode.data, nextNodeId: newNode.id } }),
+          });
+        }
+        setMutationError(null);
+      } catch (err) {
+        // The new node was already created and exists in the backend even though the PATCH
+        // that would have chained it into the dialogue flow failed - it's just not linked from
+        // `previousLastNode.nextNodeId` yet. Fall through to `load()` below (instead of
+        // returning here) so the scenarist can actually see the stray node in the list and fix
+        // the chain by hand, rather than it silently existing off-screen. Unlike the POST
+        // failure above, this branch always shows the same actionable hint regardless of the
+        // underlying error - almost every real failure here comes back as an `ApiError` (either
+        // apiRequest's own generic "не удалось подключиться" for a network error, or a
+        // server-provided message), and neither of those tells the scenarist that a node now
+        // exists unlinked, which is the one thing that actually matters here.
+        const reason = err instanceof ApiError ? err.message : null;
+        setMutationError(
+          "Не удалось связать реплику со следующей — узел создан, проверьте порядок вручную" +
+            (reason ? ` (${reason})` : ""),
+        );
       }
 
       await load();
       setSelectedNodeId(newNode.id);
-    } catch (err) {
-      setMutationError(err instanceof ApiError ? err.message : "Не удалось добавить реплику");
+    } finally {
+      setIsAddingDialogue(false);
     }
   };
 
@@ -198,6 +232,7 @@ export default function SceneEditorPage() {
         characters={characters}
         onAddDialogue={onAddDialogue}
         onNewCharacter={onNewCharacter}
+        disabled={isAddingDialogue}
       />
 
       <div className="flex gap-2 text-sm">

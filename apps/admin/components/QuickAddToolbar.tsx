@@ -21,11 +21,16 @@ export function QuickAddToolbar({
   characters,
   onAddDialogue,
   onNewCharacter,
+  disabled = false,
 }: {
   storyId: string;
   characters: CharacterOut[];
   onAddDialogue: (characterId: string | null) => void;
   onNewCharacter: () => void;
+  /** True while a previous quick-add is still in flight - disables every button in the row (and
+   * the "+ Новый персонаж" toggle) so a rapid second click can't race the first's create+patch
+   * round-trip. See `onAddDialogue` in the parent page for the race this guards against. */
+  disabled?: boolean;
 }) {
   const [navHeight, setNavHeight] = useState(0);
 
@@ -42,6 +47,26 @@ export function QuickAddToolbar({
   }, []);
 
   const [showCreateCharacter, setShowCreateCharacter] = useState(false);
+  const createCharacterWrapperRef = useRef<HTMLDivElement>(null);
+
+  // Polish pass: close the popover on an outside click. Listens on the wrapper that contains
+  // BOTH the "+ Новый персонаж" toggle button and the popover itself (not just the popover) -
+  // otherwise a click on the toggle button to close it would fire this handler's `mousedown`
+  // first (closing it), then the toggle's own `onClick` would fire on the following `click`
+  // event and immediately flip it back open.
+  useEffect(() => {
+    if (!showCreateCharacter) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (
+        createCharacterWrapperRef.current &&
+        !createCharacterWrapperRef.current.contains(e.target as Node)
+      ) {
+        setShowCreateCharacter(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [showCreateCharacter]);
 
   return (
     <div
@@ -53,7 +78,8 @@ export function QuickAddToolbar({
         <button
           type="button"
           onClick={() => onAddDialogue(null)}
-          className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm hover:bg-neutral-50"
+          disabled={disabled}
+          className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
         >
           Рассказчик
         </button>
@@ -62,16 +88,18 @@ export function QuickAddToolbar({
             key={character.id}
             type="button"
             onClick={() => onAddDialogue(character.id)}
-            className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm hover:bg-neutral-50"
+            disabled={disabled}
+            className="rounded-full border border-neutral-300 bg-white px-3 py-1.5 text-sm hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
           >
             {character.name.ru}
           </button>
         ))}
-        <div className="relative">
+        <div className="relative" ref={createCharacterWrapperRef}>
           <button
             type="button"
             onClick={() => setShowCreateCharacter((v) => !v)}
-            className="rounded-full border border-dashed border-neutral-400 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+            disabled={disabled}
+            className="rounded-full border border-dashed border-neutral-400 px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
           >
             {showCreateCharacter ? "Отмена" : "+ Новый персонаж"}
           </button>
@@ -114,6 +142,17 @@ function NewCharacterPopover({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Polish pass: close on Escape, matching the behavior scenarists expect from any transient
+  // popover/menu. (Outside-click handling lives on the wrapper in QuickAddToolbar, since it
+  // needs to see the toggle button too - see the comment there.)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
