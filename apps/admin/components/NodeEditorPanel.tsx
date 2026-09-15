@@ -385,6 +385,42 @@ function ChoiceOptionForm({
     })),
   );
   const [error, setError] = useState<string | null>(null);
+  // Advanced disclosure (next-node routing + the full multi-effect editor) starts open
+  // whenever the option already carries something that shortcut wouldn't show, so editing
+  // an existing option never silently hides configured state.
+  const [advancedOpen, setAdvancedOpen] = useState(
+    Boolean(existing?.nextNodeId) ||
+      rows.length > 1 ||
+      (rows.length === 1 && (rows[0].op !== "INCREMENT" || rows[0].characterId !== null)),
+  );
+
+  // The inline shortcut only knows how to represent a single {variableKey, characterId:
+  // null, op: "INCREMENT", value} effect - exactly the shape `save()` below already produces
+  // from `rows` for that input. Anything richer (more than one effect, a non-INCREMENT op, or
+  // an effect scoped to a character) falls back to the untouched `EffectRowsEditor`, so
+  // existing data is never silently reinterpreted by the shortcut.
+  const singleRow = rows[0];
+  const hasComplexEffects =
+    rows.length > 1 || (rows.length === 1 && (singleRow.op !== "INCREMENT" || singleRow.characterId !== null));
+  const useSimplifiedEffect = !hasComplexEffects;
+
+  const updateSimplifiedEffect = (patch: Partial<Pick<EffectRow, "variableKey" | "value">>) => {
+    setRows((current) => {
+      const base = current[0] ?? { variableKey: "", characterId: null, op: "INCREMENT", value: "" };
+      const next = { ...base, ...patch };
+      // Both fields empty means "no effect" - keep `rows` (and therefore the saved
+      // `effects` array) empty rather than persisting a blank row.
+      return next.variableKey === "" && next.value === "" ? [] : [next];
+    });
+  };
+
+  const escalateToFullEffects = () => {
+    setRows((current) => [
+      ...(current.length > 0 ? current : [{ variableKey: "", characterId: null, op: "INCREMENT" as const, value: "" }]),
+      { variableKey: "", characterId: null, op: "SET", value: "" },
+    ]);
+    setAdvancedOpen(true);
+  };
 
   const save = async () => {
     const body = {
@@ -426,18 +462,58 @@ function ChoiceOptionForm({
   };
 
   return (
-    <div className="space-y-2 rounded border border-neutral-200 p-2">
-      <input
-        value={textRu}
-        onChange={(e) => setTextRu(e.target.value)}
-        placeholder="Текст варианта"
-        className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
-      />
-      <div className="flex items-center gap-2 text-sm">
+    <div className="space-y-2 rounded border border-neutral-200 p-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={textRu}
+          onChange={(e) => setTextRu(e.target.value)}
+          placeholder="Текст варианта"
+          aria-label="Текст варианта"
+          className="min-w-[9rem] flex-1 rounded border border-neutral-300 px-2 py-1 text-sm"
+        />
+
+        {useSimplifiedEffect ? (
+          <div className="flex items-center gap-1">
+            <input
+              value={singleRow?.variableKey ?? ""}
+              onChange={(e) => updateSimplifiedEffect({ variableKey: e.target.value })}
+              placeholder="ключ"
+              aria-label="Ключ переменной"
+              title="Ключ переменной (например drama)"
+              className="w-20 rounded border border-neutral-300 px-2 py-1 text-sm"
+            />
+            <span className="text-neutral-400" aria-hidden="true">
+              +
+            </span>
+            <input
+              type="number"
+              value={singleRow?.value ?? ""}
+              onChange={(e) => updateSimplifiedEffect({ value: e.target.value })}
+              placeholder="0"
+              aria-label="На сколько изменить переменную"
+              className="w-14 rounded border border-neutral-300 px-2 py-1 text-sm"
+            />
+            <button
+              type="button"
+              onClick={escalateToFullEffects}
+              title="Добавить ещё один эффект"
+              aria-label="Добавить ещё один эффект"
+              className="rounded border border-neutral-300 px-2 py-1 text-neutral-600"
+            >
+              +
+            </button>
+          </div>
+        ) : (
+          <span className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600">
+            Эффектов: {rows.length}
+          </span>
+        )}
+
         <select
           value={costCurrency}
           onChange={(e) => setCostCurrency(e.target.value as "SOFT" | "HARD" | "")}
-          className="rounded border border-neutral-300 px-2 py-1"
+          aria-label="Цена"
+          className="rounded border border-neutral-300 px-2 py-1 text-sm"
         >
           <option value="">Бесплатно</option>
           <option value="SOFT">Монеты</option>
@@ -448,14 +524,19 @@ function ChoiceOptionForm({
             type="number"
             value={costAmount}
             onChange={(e) => setCostAmount(Number(e.target.value))}
-            className="w-20 rounded border border-neutral-300 px-2 py-1"
+            aria-label="Сумма цены"
+            className="w-16 rounded border border-neutral-300 px-2 py-1 text-sm"
           />
         )}
-      </div>
-      <NextNodeSelect value={nextNodeId} allNodes={allNodes} excludeNodeId={nodeId} onChange={setNextNodeId} />
-      <EffectRowsEditor rows={rows} onChange={setRows} />
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex gap-2">
+
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          aria-expanded={advancedOpen}
+          className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600"
+        >
+          {advancedOpen ? "Скрыть доп." : "Доп."}
+        </button>
         <button onClick={save} className="rounded bg-neutral-900 px-3 py-1 text-xs text-white">
           Сохранить
         </button>
@@ -465,6 +546,18 @@ function ChoiceOptionForm({
           </button>
         )}
       </div>
+
+      {advancedOpen && (
+        <div className="space-y-2 border-t border-neutral-200 pt-2">
+          <div>
+            <label className="block text-xs text-neutral-600">Следующий узел</label>
+            <NextNodeSelect value={nextNodeId} allNodes={allNodes} excludeNodeId={nodeId} onChange={setNextNodeId} />
+          </div>
+          {hasComplexEffects && <EffectRowsEditor rows={rows} onChange={setRows} />}
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
 }
