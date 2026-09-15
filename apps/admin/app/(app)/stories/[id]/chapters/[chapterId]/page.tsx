@@ -9,6 +9,7 @@ import { previewHref } from "@/lib/preview";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
 import type { ChapterOut, CharacterOut, SceneNodeOut } from "@/lib/types";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
+import { QuickAddToolbar } from "@/components/QuickAddToolbar";
 import { SceneGraphView } from "@/components/SceneGraphView";
 
 export default function SceneEditorPage() {
@@ -91,6 +92,61 @@ export default function SceneEditorPage() {
     }
   };
 
+  // One-click, auto-chained dialogue creation for the sticky QuickAddToolbar. `nextNodeId`
+  // lives on a node's OWN `data` and points FORWARD (see DialogueNodeData in
+  // apps/api/app/schemas/content.py) - so "chaining" the new node after the chapter's current
+  // last node means PATCHing that PREVIOUS node's `data.nextNodeId`, not the new node's.
+  const onAddDialogue = async (characterId: string | null) => {
+    try {
+      const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
+      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+
+      const character = characterId ? characters.find((c) => c.id === characterId) ?? null : null;
+      const staged = character
+        ? [
+            {
+              characterId: character.id,
+              sprite: Object.keys(character.sprites)[0] ?? "neutral",
+              position: character.isProtagonist ? "left" : "right",
+            },
+          ]
+        : [];
+
+      const newNode = await apiRequest<SceneNodeOut>("/admin/scene-nodes", {
+        method: "POST",
+        body: JSON.stringify({
+          type: "DIALOGUE",
+          chapterId,
+          order: nodes.length,
+          data: {
+            speakerCharacterId: characterId,
+            text: { ru: "…" },
+            staged,
+          },
+        }),
+      });
+
+      if (previousLastNode) {
+        // Re-send the previous node's full existing `data`, only changing `nextNodeId` -
+        // matches the full-object-resend convention used by every other save path in this
+        // codebase (e.g. EffectForm/DialogueForm in NodeEditorPanel.tsx).
+        await apiRequest(`/admin/scene-nodes/${previousLastNode.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ data: { ...previousLastNode.data, nextNodeId: newNode.id } }),
+        });
+      }
+
+      await load();
+      setSelectedNodeId(newNode.id);
+    } catch (err) {
+      setMutationError(err instanceof ApiError ? err.message : "Не удалось добавить реплику");
+    }
+  };
+
+  const onNewCharacter = () => {
+    load();
+  };
+
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!chapter) return <p className="text-neutral-500">Загрузка…</p>;
 
@@ -136,6 +192,13 @@ export default function SceneEditorPage() {
           </button>
         ))}
       </div>
+
+      <QuickAddToolbar
+        storyId={storyId}
+        characters={characters}
+        onAddDialogue={onAddDialogue}
+        onNewCharacter={onNewCharacter}
+      />
 
       <div className="flex gap-2 text-sm">
         <button
