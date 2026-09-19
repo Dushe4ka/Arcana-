@@ -32,11 +32,14 @@ export function QuickAddToolbar({
   onNewCharacter: () => void;
   /** Auto-chains an EFFECT node that sets `display_name_override` for the picked character -
    * see `onRename` in the parent page. Rejects (without closing the popover) if the hard part
-   * (variable check/create + node creation) failed; a soft chain-link failure resolves
-   * normally, same as `onAddDialogue`. */
+   * (variable check/create + node creation) failed, or if another quick action is still in
+   * flight (shared `isQuickActionPending` guard) - the popover's `onSubmit` awaits this and
+   * must not treat a blocked call as success. A soft chain-link failure resolves normally,
+   * same as `onAddDialogue`. */
   onRename: (characterId: string, newName: string) => Promise<void>;
   /** Auto-chains a CHOICE node with one option per outfit the picked character already has -
-   * see `onChangeOutfit` in the parent page. Same reject/resolve contract as `onRename`. */
+   * see `onChangeOutfit` in the parent page. Same reject/resolve contract as `onRename`,
+   * including the in-flight-guard rejection. */
   onChangeOutfit: (characterId: string) => Promise<void>;
   /** Whoever last spoke in this chapter, if determinable - defaults the "Переименовать"
    * popover's character select to them, since a rename is most often "the character who's been

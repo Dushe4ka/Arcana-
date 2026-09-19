@@ -56,6 +56,12 @@ export default function SceneEditorPage() {
   // the chain. Also doubles as in-flight feedback (toolbar buttons disable while true). Shared
   // by all three quick actions (dialogue/rename/outfit-change) - only one auto-chain round-trip
   // should ever be in flight at a time, since they all read/patch the same `nodes` snapshot.
+  //
+  // `onRename`/`onChangeOutfit` throw (rather than silently returning) when this guard blocks
+  // them, since their popovers `await` the call and unconditionally close on resolution - a
+  // silent `return` there would look like a successful no-op to the scenarist. `onAddDialogue`
+  // is fired straight from a toolbar button with nothing awaiting its result, so its own early
+  // return staying silent is fine.
   const [isQuickActionPending, setIsQuickActionPending] = useState(false);
 
   const onCreateNode = async (type: SceneNodeOut["type"]) => {
@@ -196,7 +202,16 @@ export default function SceneEditorPage() {
   // against here. `isQuickActionPending` guards the same stale-closure race `onAddDialogue`
   // guards against, since this handler reads/patches the same `nodes` snapshot.
   const onRename = async (characterId: string, newName: string) => {
-    if (isQuickActionPending) return;
+    // Unlike `onAddDialogue` (fired straight from a toolbar button with no popover awaiting the
+    // result), this is awaited by `RenamePopover.onSubmit`, which unconditionally treats a
+    // resolved promise as "the action happened" and closes itself. A silent `return` here would
+    // let that popover close as if a node had been created while another quick action (Rename or
+    // Change Outfit - both independently toggleable, not mutually exclusive) is still in flight.
+    // Throwing instead routes through the popover's own try/catch, which shows the message and
+    // keeps the popover open with the scenarist's input intact.
+    if (isQuickActionPending) {
+      throw new ApiError(0, "Дождитесь завершения предыдущего действия");
+    }
     const character = characters.find((c) => c.id === characterId);
     if (!character) throw new ApiError(0, "Персонаж не найден");
 
@@ -278,7 +293,12 @@ export default function SceneEditorPage() {
   // fresh right before building the node, since the toolbar's own fetch (used only to decide
   // which characters are selectable) can be stale by the time the popover is submitted.
   const onChangeOutfit = async (characterId: string) => {
-    if (isQuickActionPending) return;
+    // Same reasoning as `onRename`'s guard above: `ChangeOutfitPopover.onSubmit` awaits this and
+    // closes unconditionally on resolution, so a blocked call must reject (not silently resolve)
+    // or the popover closes as if a CHOICE node were created when nothing happened.
+    if (isQuickActionPending) {
+      throw new ApiError(0, "Дождитесь завершения предыдущего действия");
+    }
     setIsQuickActionPending(true);
     try {
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
