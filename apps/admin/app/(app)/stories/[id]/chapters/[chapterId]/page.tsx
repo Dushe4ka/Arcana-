@@ -7,10 +7,15 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { previewHref } from "@/lib/preview";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
-import type { ChapterOut, CharacterOut, SceneNodeOut } from "@/lib/types";
+import type { ChapterOut, CharacterOut, OutfitOut, SceneNodeOut, VariableDefinitionOut } from "@/lib/types";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
 import { SceneGraphView } from "@/components/SceneGraphView";
+
+// Task 3's read-side key (`play_service.py`/`preview_service.py` already look this variable up
+// as a speaker-name override, falling back to `Character.name`) - this file is the write side:
+// the "Переименовать" quick action below is the only place that ever sets it.
+const DISPLAY_NAME_OVERRIDE_KEY = "display_name_override";
 
 export default function SceneEditorPage() {
   const { id: storyId, chapterId } = useParams<{ id: string; chapterId: string }>();
@@ -48,8 +53,10 @@ export default function SceneEditorPage() {
   // clicks fired before the first's create+patch round-trip resolves would both read the same
   // `nodes` snapshot (same `previousLastNode`, same `order: nodes.length`), and the second
   // click's PATCH would overwrite the first's `nextNodeId` write, orphaning one new node from
-  // the chain. Also doubles as in-flight feedback (toolbar buttons disable while true).
-  const [isAddingDialogue, setIsAddingDialogue] = useState(false);
+  // the chain. Also doubles as in-flight feedback (toolbar buttons disable while true). Shared
+  // by all three quick actions (dialogue/rename/outfit-change) - only one auto-chain round-trip
+  // should ever be in flight at a time, since they all read/patch the same `nodes` snapshot.
+  const [isQuickActionPending, setIsQuickActionPending] = useState(false);
 
   const onCreateNode = async (type: SceneNodeOut["type"]) => {
     const defaultDataByType: Record<SceneNodeOut["type"], object> = {
@@ -103,8 +110,8 @@ export default function SceneEditorPage() {
   // apps/api/app/schemas/content.py) - so "chaining" the new node after the chapter's current
   // last node means PATCHing that PREVIOUS node's `data.nextNodeId`, not the new node's.
   const onAddDialogue = async (characterId: string | null) => {
-    if (isAddingDialogue) return;
-    setIsAddingDialogue(true);
+    if (isQuickActionPending) return;
+    setIsQuickActionPending(true);
     try {
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
       const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
@@ -173,13 +180,201 @@ export default function SceneEditorPage() {
       await load();
       setSelectedNodeId(newNode.id);
     } finally {
-      setIsAddingDialogue(false);
+      setIsQuickActionPending(false);
+    }
+  };
+
+  // "Переименовать" quick action: sets a per-character `display_name_override` variable via an
+  // auto-chained EFFECT node (Task 3 already made play_service/preview_service read this
+  // variable back as a speaker-name override). Mirrors `WardrobeMatrix.onAddOutfit`'s
+  // check-then-create pattern for the one-time `VariableDefinition`, then Task 8's
+  // last-node-lookup + PATCH chaining mechanism for the node itself.
+  //
+  // Unlike `onAddOutfit`, this always re-fetches `/admin/variables` fresh right before deciding
+  // whether to create the definition, rather than trusting a parent-supplied list - the chapter
+  // editor page never otherwise loads `VariableDefinition`s, so there's no stale prop to guard
+  // against here. `isQuickActionPending` guards the same stale-closure race `onAddDialogue`
+  // guards against, since this handler reads/patches the same `nodes` snapshot.
+  const onRename = async (characterId: string, newName: string) => {
+    if (isQuickActionPending) return;
+    const character = characters.find((c) => c.id === characterId);
+    if (!character) throw new ApiError(0, "Персонаж не найден");
+
+    setIsQuickActionPending(true);
+    try {
+      const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
+      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+
+      let newNode: SceneNodeOut;
+      try {
+        const existingVariables = await apiRequest<VariableDefinitionOut[]>(
+          `/admin/variables?storyId=${storyId}`,
+        );
+        const hasVariable = existingVariables.some(
+          (v) => v.key === DISPLAY_NAME_OVERRIDE_KEY && v.characterId === characterId,
+        );
+        if (!hasVariable) {
+          await apiRequest("/admin/variables", {
+            method: "POST",
+            body: JSON.stringify({
+              storyId,
+              key: DISPLAY_NAME_OVERRIDE_KEY,
+              label: { ru: "Отображаемое имя" },
+              type: "STRING",
+              defaultValue: character.name.ru,
+              characterId,
+            }),
+          });
+        }
+
+        newNode = await apiRequest<SceneNodeOut>("/admin/scene-nodes", {
+          method: "POST",
+          body: JSON.stringify({
+            type: "EFFECT",
+            chapterId,
+            order: nodes.length,
+            data: {
+              effects: [{ variableKey: DISPLAY_NAME_OVERRIDE_KEY, characterId, op: "SET", value: newName }],
+              nextNodeId: null,
+            },
+          }),
+        });
+      } catch (err) {
+        // Nothing (or only the VariableDefinition) was created - rethrow so the popover's own
+        // catch can keep itself open and show the error, instead of closing on a no-op like a
+        // successful submit would.
+        setMutationError(err instanceof ApiError ? err.message : "Не удалось переименовать персонажа");
+        throw err;
+      }
+
+      try {
+        if (previousLastNode) {
+          await apiRequest(`/admin/scene-nodes/${previousLastNode.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ data: { ...previousLastNode.data, nextNodeId: newNode.id } }),
+          });
+        }
+        setMutationError(null);
+      } catch (err) {
+        // Same soft-failure shape as `onAddDialogue`: the EFFECT node itself was created, only the
+        // chain link failed - so continue to `load()`/select it rather than treating this as a
+        // full failure.
+        const reason = err instanceof ApiError ? err.message : null;
+        setMutationError(
+          "Не удалось связать узел переименования со следующим — узел создан, проверьте порядок вручную" +
+            (reason ? ` (${reason})` : ""),
+        );
+      }
+
+      await load();
+      setSelectedNodeId(newNode.id);
+    } finally {
+      setIsQuickActionPending(false);
+    }
+  };
+
+  // "Смена наряда" quick action: auto-chains a CHOICE node with one option per `Outfit` row a
+  // character already has (Task 2/6's wardrobe pricing UI). Always re-fetches the outfit list
+  // fresh right before building the node, since the toolbar's own fetch (used only to decide
+  // which characters are selectable) can be stale by the time the popover is submitted.
+  const onChangeOutfit = async (characterId: string) => {
+    if (isQuickActionPending) return;
+    setIsQuickActionPending(true);
+    try {
+      const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
+      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+
+      let newNode: SceneNodeOut;
+      try {
+        const outfits = await apiRequest<OutfitOut[]>(`/admin/characters/${characterId}/outfits`);
+        if (outfits.length === 0) {
+          // Defense in depth - the popover's own select already disables characters with no
+          // outfits, so this should be unreachable from the UI, but a stale fetch (outfits
+          // deleted between the popover opening and submit) shouldn't silently create an empty
+          // CHOICE node.
+          throw new ApiError(0, "У этого персонажа пока нет нарядов — добавьте в «Гардеробе»");
+        }
+
+        newNode = await apiRequest<SceneNodeOut>("/admin/scene-nodes", {
+          method: "POST",
+          body: JSON.stringify({
+            type: "CHOICE",
+            chapterId,
+            order: nodes.length,
+            data: {},
+          }),
+        });
+
+        // Options are independent rows (no ordering dependency between them), so they're created
+        // in parallel rather than one PATCH-chain-style await per option.
+        await Promise.all(
+          outfits.map((outfit, index) =>
+            apiRequest("/admin/choice-options", {
+              method: "POST",
+              body: JSON.stringify({
+                nodeId: newNode.id,
+                text: { ru: outfit.label.ru },
+                order: index,
+                costCurrency: outfit.priceHard > 0 ? "HARD" : null,
+                costAmount: outfit.priceHard,
+                effects: [
+                  { variableKey: "outfit", characterId, op: "SET", value: outfit.key },
+                  ...outfit.statEffects,
+                ],
+                nextNodeId: null,
+              }),
+            }),
+          ),
+        );
+      } catch (err) {
+        setMutationError(err instanceof ApiError ? err.message : "Не удалось создать узел смены наряда");
+        throw err;
+      }
+
+      try {
+        if (previousLastNode) {
+          await apiRequest(`/admin/scene-nodes/${previousLastNode.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ data: { ...previousLastNode.data, nextNodeId: newNode.id } }),
+          });
+        }
+        setMutationError(null);
+      } catch (err) {
+        const reason = err instanceof ApiError ? err.message : null;
+        setMutationError(
+          "Не удалось связать узел смены наряда со следующим — узел создан, проверьте порядок вручную" +
+            (reason ? ` (${reason})` : ""),
+        );
+      }
+
+      await load();
+      setSelectedNodeId(newNode.id);
+    } finally {
+      setIsQuickActionPending(false);
     }
   };
 
   const onNewCharacter = () => {
     load();
   };
+
+  // Defaults the "Переименовать" popover's character select to whoever last spoke in this
+  // chapter, when that's easily available - scanning `nodes` for the last DIALOGUE node with a
+  // non-null speaker. Recomputed on every render (cheap - chapters rarely have more than a
+  // couple hundred nodes) rather than memoized, matching this file's existing style for
+  // `sortedNodes`/`previousLastNode` above.
+  const sortedNodesForDefaults = nodes.slice().sort((a, b) => a.order - b.order);
+  let lastSpeakerCharacterId: string | null = null;
+  for (let i = sortedNodesForDefaults.length - 1; i >= 0; i--) {
+    const node = sortedNodesForDefaults[i];
+    if (node.type === "DIALOGUE") {
+      const speakerCharacterId = (node.data as { speakerCharacterId?: string | null }).speakerCharacterId;
+      if (speakerCharacterId) {
+        lastSpeakerCharacterId = speakerCharacterId;
+        break;
+      }
+    }
+  }
 
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!chapter) return <p className="text-neutral-500">Загрузка…</p>;
@@ -232,7 +427,10 @@ export default function SceneEditorPage() {
         characters={characters}
         onAddDialogue={onAddDialogue}
         onNewCharacter={onNewCharacter}
-        disabled={isAddingDialogue}
+        onRename={onRename}
+        onChangeOutfit={onChangeOutfit}
+        lastSpeakerCharacterId={lastSpeakerCharacterId}
+        disabled={isQuickActionPending}
       />
 
       <div className="flex gap-2 text-sm">
