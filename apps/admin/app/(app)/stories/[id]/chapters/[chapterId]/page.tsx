@@ -64,6 +64,35 @@ export default function SceneEditorPage() {
   // return staying silent is fine.
   const [isQuickActionPending, setIsQuickActionPending] = useState(false);
 
+  // Chains `node` so play continues into `nextNodeId` right after it - the one piece of
+  // "auto-chain from the previous last node" logic shared by all three quick actions below.
+  // Every node type except CHOICE keeps a single `data.nextNodeId` field, so chaining just means
+  // resending its existing `data` with that one field overwritten (the same full-object-resend
+  // convention every other save path in this codebase uses, e.g. DialogueForm/EffectForm in
+  // NodeEditorPanel.tsx). CHOICE is the one exception: it has no `data.nextNodeId` of its own -
+  // each `ChoiceOption` carries its own `nextNodeId` instead (see `ChoiceOptionOut` in
+  // lib/types.ts), so "the choice continues here" means patching every one of its options in
+  // parallel. Before this helper existed, all three call sites below unconditionally patched
+  // `previousLastNode.data.nextNodeId` regardless of type - a silent no-op whenever the previous
+  // node was a CHOICE, since `ChoiceNodeData` has no such field for the backend to persist.
+  const chainNodeForward = async (node: SceneNodeOut, nextNodeId: string) => {
+    if (node.type === "CHOICE") {
+      await Promise.all(
+        node.choiceOptions.map((option) =>
+          apiRequest(`/admin/choice-options/${option.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ nextNodeId }),
+          }),
+        ),
+      );
+      return;
+    }
+    await apiRequest(`/admin/scene-nodes/${node.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ data: { ...node.data, nextNodeId } }),
+    });
+  };
+
   const onCreateNode = async (type: SceneNodeOut["type"]) => {
     const defaultDataByType: Record<SceneNodeOut["type"], object> = {
       DIALOGUE: { text: { ru: "…" } },
@@ -156,13 +185,7 @@ export default function SceneEditorPage() {
 
       try {
         if (previousLastNode) {
-          // Re-send the previous node's full existing `data`, only changing `nextNodeId` -
-          // matches the full-object-resend convention used by every other save path in this
-          // codebase (e.g. EffectForm/DialogueForm in NodeEditorPanel.tsx).
-          await apiRequest(`/admin/scene-nodes/${previousLastNode.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ data: { ...previousLastNode.data, nextNodeId: newNode.id } }),
-          });
+          await chainNodeForward(previousLastNode, newNode.id);
         }
         setMutationError(null);
       } catch (err) {
@@ -264,10 +287,7 @@ export default function SceneEditorPage() {
 
       try {
         if (previousLastNode) {
-          await apiRequest(`/admin/scene-nodes/${previousLastNode.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ data: { ...previousLastNode.data, nextNodeId: newNode.id } }),
-          });
+          await chainNodeForward(previousLastNode, newNode.id);
         }
         setMutationError(null);
       } catch (err) {
@@ -353,10 +373,7 @@ export default function SceneEditorPage() {
 
       try {
         if (previousLastNode) {
-          await apiRequest(`/admin/scene-nodes/${previousLastNode.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ data: { ...previousLastNode.data, nextNodeId: newNode.id } }),
-          });
+          await chainNodeForward(previousLastNode, newNode.id);
         }
         setMutationError(null);
       } catch (err) {
