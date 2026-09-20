@@ -66,18 +66,28 @@ export default function SceneEditorPage() {
 
   // Chains `node` so play continues into `nextNodeId` right after it - the one piece of
   // "auto-chain from the previous last node" logic shared by all three quick actions below.
-  // Every node type except CHOICE keeps a single `data.nextNodeId` field, so chaining just means
-  // resending its existing `data` with that one field overwritten (the same full-object-resend
+  // DIALOGUE/EFFECT nodes keep a single `data.nextNodeId` field, so chaining those just means
+  // resending their existing `data` with that one field overwritten (the same full-object-resend
   // convention every other save path in this codebase uses, e.g. DialogueForm/EffectForm in
-  // NodeEditorPanel.tsx). CHOICE is the one exception: it has no `data.nextNodeId` of its own -
-  // each `ChoiceOption` carries its own `nextNodeId` instead (see `ChoiceOptionOut` in
-  // lib/types.ts), so "the choice continues here" means patching every one of its options in
-  // parallel. Before this helper existed, all three call sites below unconditionally patched
-  // `previousLastNode.data.nextNodeId` regardless of type - a silent no-op whenever the previous
-  // node was a CHOICE, since `ChoiceNodeData` has no such field for the backend to persist.
+  // NodeEditorPanel.tsx). CHOICE routes forward per-option (handled in the branch below): it has
+  // no `data.nextNodeId` of its own - each `ChoiceOption` carries its own `nextNodeId` instead
+  // (see `ChoiceOptionOut` in lib/types.ts), so "the choice continues here" means patching every
+  // one of its options in parallel, tolerating some PATCHes failing while others succeed (see
+  // comment in the branch below). CONDITION/END have no single "next" field either - CONDITION
+  // branches via `then`/`else`, END has none at all - but auto-chaining a quick-add onto one of
+  // those isn't something this toolbar currently attempts to handle correctly: a known gap,
+  // deliberately not addressed by this helper. Before this helper existed, all three call sites
+  // below unconditionally patched `previousLastNode.data.nextNodeId` regardless of type - a
+  // silent no-op whenever the previous node was CHOICE, CONDITION, or END, since none of those
+  // data shapes has such a field for the backend to persist.
   const chainNodeForward = async (node: SceneNodeOut, nextNodeId: string) => {
     if (node.type === "CHOICE") {
-      await Promise.all(
+      // `Promise.all` would reject as soon as the FIRST option's PATCH failed without waiting for
+      // (or cancelling) the rest, which keep running independently - a partial failure could then
+      // leave some options linked and others not, with the generic catch below giving no hint of
+      // which. `Promise.allSettled` lets every PATCH finish regardless of its siblings, so we can
+      // report exactly how many/which options actually failed to link.
+      const results = await Promise.allSettled(
         node.choiceOptions.map((option) =>
           apiRequest(`/admin/choice-options/${option.id}`, {
             method: "PATCH",
@@ -85,6 +95,14 @@ export default function SceneEditorPage() {
           }),
         ),
       );
+      const failedOptions = node.choiceOptions.filter((_, index) => results[index].status === "rejected");
+      if (failedOptions.length > 0) {
+        const labels = failedOptions.map((option) => option.text.ru || "(без текста)").join(", ");
+        throw new ApiError(
+          0,
+          `Не удалось связать ${failedOptions.length} из ${node.choiceOptions.length} вариантов со следующим узлом (${labels}) — проверьте порядок вручную`,
+        );
+      }
       return;
     }
     await apiRequest(`/admin/scene-nodes/${node.id}`, {
@@ -143,7 +161,9 @@ export default function SceneEditorPage() {
   // One-click, auto-chained dialogue creation for the sticky QuickAddToolbar. `nextNodeId`
   // lives on a node's OWN `data` and points FORWARD (see DialogueNodeData in
   // apps/api/app/schemas/content.py) - so "chaining" the new node after the chapter's current
-  // last node means PATCHing that PREVIOUS node's `data.nextNodeId`, not the new node's.
+  // last node means updating that PREVIOUS node so it points here, not the new node's own data.
+  // What exactly gets updated depends on the previous node's type - see `chainNodeForward` above
+  // for the DIALOGUE/EFFECT vs. CHOICE (vs. still-unhandled CONDITION/END) breakdown.
   const onAddDialogue = async (characterId: string | null) => {
     if (isQuickActionPending) return;
     setIsQuickActionPending(true);
