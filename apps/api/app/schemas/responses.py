@@ -51,6 +51,19 @@ class CharacterOut(ORMModel):
     is_protagonist: bool
 
 
+class CharacterPublicOut(ORMModel):
+    """Public shape of a character - used by the unauthenticated catalog endpoint. Deliberately
+    omits `first_name`/`last_name` (admin-only authoring metadata, never player-visible) that
+    `CharacterOut` carries for the admin panel."""
+
+    id: uuid.UUID
+    story_id: uuid.UUID
+    name: LocalizedText
+    name_color: str
+    sprites: dict[str, str]
+    is_protagonist: bool
+
+
 class OutfitOut(ORMModel):
     id: uuid.UUID
     character_id: uuid.UUID
@@ -111,7 +124,7 @@ class StoryPublicDetailOut(StoryOut):
     not something the mobile app needs)."""
 
     seasons: list[SeasonOut] = []
-    characters: list[CharacterOut] = []
+    characters: list[CharacterPublicOut] = []
 
 
 class StoryDetailOut(StoryOut):
