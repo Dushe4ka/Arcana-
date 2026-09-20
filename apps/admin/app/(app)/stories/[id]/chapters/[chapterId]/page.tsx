@@ -7,6 +7,7 @@ import Link from "next/link";
 import { apiRequest, ApiError } from "@/lib/api";
 import { previewHref } from "@/lib/preview";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
+import { derivePoses } from "@/lib/sprites";
 import type { ChapterOut, CharacterOut, OutfitOut, SceneNodeOut, VariableDefinitionOut } from "@/lib/types";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
@@ -80,36 +81,63 @@ export default function SceneEditorPage() {
   // below unconditionally patched `previousLastNode.data.nextNodeId` regardless of type - a
   // silent no-op whenever the previous node was CHOICE, CONDITION, or END, since none of those
   // data shapes has such a field for the backend to persist.
-  const chainNodeForward = async (node: SceneNodeOut, nextNodeId: string) => {
+  // Returns an informational (non-error) message worth surfacing to the scenarist once chaining
+  // succeeds - e.g. some CHOICE options were left untouched because they already had a
+  // destination - or `null` when there's nothing to report. A thrown `ApiError` still means the
+  // chain itself failed (a PATCH request errored), which is a different, harder failure.
+  const chainNodeForward = async (node: SceneNodeOut, nextNodeId: string): Promise<string | null> => {
     if (node.type === "CHOICE") {
+      // Only route options that don't already point somewhere - PATCHing every option
+      // unconditionally (as this used to) is correct for a freshly-built node (all options start
+      // null) but destructive for a CHOICE node with deliberately-authored routing on some or all
+      // options: one quick-add click would silently overwrite that with no warning.
+      const unroutedOptions = node.choiceOptions.filter((option) => option.nextNodeId == null);
+      const alreadyRoutedCount = node.choiceOptions.length - unroutedOptions.length;
+      if (unroutedOptions.length === 0) {
+        return "Все варианты предыдущего узла уже ведут на другие узлы — новый узел создан, но не подключён к нему автоматически";
+      }
       // `Promise.all` would reject as soon as the FIRST option's PATCH failed without waiting for
       // (or cancelling) the rest, which keep running independently - a partial failure could then
       // leave some options linked and others not, with the generic catch below giving no hint of
       // which. `Promise.allSettled` lets every PATCH finish regardless of its siblings, so we can
       // report exactly how many/which options actually failed to link.
       const results = await Promise.allSettled(
-        node.choiceOptions.map((option) =>
+        unroutedOptions.map((option) =>
           apiRequest(`/admin/choice-options/${option.id}`, {
             method: "PATCH",
             body: JSON.stringify({ nextNodeId }),
           }),
         ),
       );
-      const failedOptions = node.choiceOptions.filter((_, index) => results[index].status === "rejected");
+      const failedOptions = unroutedOptions.filter((_, index) => results[index].status === "rejected");
       if (failedOptions.length > 0) {
         const labels = failedOptions.map((option) => option.text.ru || "(без текста)").join(", ");
         throw new ApiError(
           0,
-          `Не удалось связать ${failedOptions.length} из ${node.choiceOptions.length} вариантов со следующим узлом (${labels}) — проверьте порядок вручную`,
+          `Не удалось связать ${failedOptions.length} из ${unroutedOptions.length} вариантов со следующим узлом (${labels}) — проверьте порядок вручную`,
         );
       }
-      return;
+      if (alreadyRoutedCount > 0) {
+        return `Подключено ${unroutedOptions.length} из ${node.choiceOptions.length} вариантов — остальные ${alreadyRoutedCount} уже вели на другой узел и не были изменены`;
+      }
+      return null;
     }
     await apiRequest(`/admin/scene-nodes/${node.id}`, {
       method: "PATCH",
       body: JSON.stringify({ data: { ...node.data, nextNodeId } }),
     });
+    return null;
   };
+
+  // `order: nodes.length` breaks once a node has ever been deleted from the middle of a chapter
+  // (no DB-level uniqueness on `(chapter_id, order)`) - two nodes can end up sharing an `order`,
+  // which makes the "sort by order, take the last" logic the whole quick-add chaining feature
+  // relies on nondeterministic. Always one past the current highest `order`, regardless of gaps
+  // left by earlier deletions. Used by the three quick-add handlers below (onAddDialogue/
+  // onRename/onChangeOutfit) - `onCreateNode` below keeps its own plain `nodes.length` (out of
+  // scope for this fix; nodes created through it are never auto-chained, so a collision there
+  // doesn't feed into the chaining logic this exists to protect).
+  const nextOrder = (): number => Math.max(-1, ...nodes.map((n) => n.order)) + 1;
 
   const onCreateNode = async (type: SceneNodeOut["type"]) => {
     const defaultDataByType: Record<SceneNodeOut["type"], object> = {
@@ -176,7 +204,13 @@ export default function SceneEditorPage() {
         ? [
             {
               characterId: character.id,
-              sprite: Object.keys(character.sprites)[0] ?? "neutral",
+              // `character.sprites` keys are `${outfit}_${pose}` for a character with outfits
+              // (e.g. `dress_neutral`) - the engine treats `staged[].sprite` as the POSE ONLY,
+              // composing the real sprite key at read time. A raw `Object.keys(...)[0]` would
+              // hard-pin whatever outfit prefix happens to sort first, breaking outfit changes
+              // for this line. `derivePoses` (shared with NodeEditorPanel/WardrobeMatrix)
+              // strips that prefix down to the bare pose.
+              sprite: derivePoses(character.sprites)[0] ?? "neutral",
               position: character.isProtagonist ? "left" : "right",
             },
           ]
@@ -189,7 +223,7 @@ export default function SceneEditorPage() {
           body: JSON.stringify({
             type: "DIALOGUE",
             chapterId,
-            order: nodes.length,
+            order: nextOrder(),
             data: {
               speakerCharacterId: characterId,
               text: { ru: "…" },
@@ -204,10 +238,8 @@ export default function SceneEditorPage() {
       }
 
       try {
-        if (previousLastNode) {
-          await chainNodeForward(previousLastNode, newNode.id);
-        }
-        setMutationError(null);
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        setMutationError(note);
       } catch (err) {
         // The new node was already created and exists in the backend even though the PATCH
         // that would have chained it into the dialogue flow failed - it's just not linked from
@@ -279,7 +311,18 @@ export default function SceneEditorPage() {
               key: DISPLAY_NAME_OVERRIDE_KEY,
               label: { ru: "Отображаемое имя" },
               type: "STRING",
-              defaultValue: character.name.ru,
+              // NOT `character.name.ru` - the read side (`VariableContext.as_value_map()` in
+              // variables_service.py) falls back to a definition's `default_value` for ANY
+              // player with no stored `PlayerVariableValue` row yet, including ones reading
+              // scenes that come BEFORE this rename's EFFECT node in actual playthrough order.
+              // Freezing the character's current name in here would make that pre-rename name
+              // bleed retroactively into every earlier scene, and would also survive later
+              // edits to the character's own display name once frozen. `preview_service.py`/
+              // `play_service.py` already guard with `isinstance(override, str) and override`
+              // before using the override, so an empty string here correctly reads as "no
+              // override active yet, use `Character.name`" - exactly the spec's "до первого
+              // переименования — Character.name, после — новое".
+              defaultValue: "",
               characterId,
             }),
           });
@@ -290,7 +333,7 @@ export default function SceneEditorPage() {
           body: JSON.stringify({
             type: "EFFECT",
             chapterId,
-            order: nodes.length,
+            order: nextOrder(),
             data: {
               effects: [{ variableKey: DISPLAY_NAME_OVERRIDE_KEY, characterId, op: "SET", value: newName }],
               nextNodeId: null,
@@ -306,10 +349,8 @@ export default function SceneEditorPage() {
       }
 
       try {
-        if (previousLastNode) {
-          await chainNodeForward(previousLastNode, newNode.id);
-        }
-        setMutationError(null);
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        setMutationError(note);
       } catch (err) {
         // Same soft-failure shape as `onAddDialogue`: the EFFECT node itself was created, only the
         // chain link failed - so continue to `load()`/select it rather than treating this as a
@@ -355,12 +396,40 @@ export default function SceneEditorPage() {
           throw new ApiError(0, "У этого персонажа пока нет нарядов — добавьте в «Гардеробе»");
         }
 
+        // Same check-then-create pattern `onRename` uses for `display_name_override`, and that
+        // `WardrobeMatrix.onAddOutfit` already uses for this exact `outfit` variable when it
+        // creates the FIRST outfit through that UI. Not every code path that gets a character to
+        // having outfits is guaranteed to have gone through that create-first-outfit flow (e.g.
+        // legacy sprite-derived outfit columns), so this can't assume the definition already
+        // exists - an effect referencing a variable key with no matching definition is silently
+        // skipped at read time per this codebase's convention, which would make every option in
+        // this CHOICE node a no-op.
+        const existingVariables = await apiRequest<VariableDefinitionOut[]>(
+          `/admin/variables?storyId=${storyId}`,
+        );
+        const hasOutfitVariable = existingVariables.some(
+          (v) => v.key === "outfit" && v.characterId === characterId,
+        );
+        if (!hasOutfitVariable) {
+          await apiRequest("/admin/variables", {
+            method: "POST",
+            body: JSON.stringify({
+              storyId,
+              key: "outfit",
+              label: { ru: "Наряд" },
+              type: "STRING",
+              defaultValue: outfits[0].key,
+              characterId,
+            }),
+          });
+        }
+
         newNode = await apiRequest<SceneNodeOut>("/admin/scene-nodes", {
           method: "POST",
           body: JSON.stringify({
             type: "CHOICE",
             chapterId,
-            order: nodes.length,
+            order: nextOrder(),
             data: {},
           }),
         });
@@ -392,10 +461,8 @@ export default function SceneEditorPage() {
       }
 
       try {
-        if (previousLastNode) {
-          await chainNodeForward(previousLastNode, newNode.id);
-        }
-        setMutationError(null);
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        setMutationError(note);
       } catch (err) {
         const reason = err instanceof ApiError ? err.message : null;
         setMutationError(

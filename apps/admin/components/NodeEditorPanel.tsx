@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
+import { derivePoses } from "@/lib/sprites";
 import type { ChoiceOptionOut, CharacterOut, SceneNodeOut } from "@/lib/types";
 import { EffectRowsEditor, parseValue, type EffectRow } from "./EffectRowsEditor";
 import { ImageUpload } from "./ImageUpload";
@@ -16,20 +17,6 @@ const STAGE_POSITIONS = [
 type StagePosition = (typeof STAGE_POSITIONS)[number]["value"];
 
 type StagedRow = { characterId: string; sprite: string; position: StagePosition };
-
-/** Extracts the set of pose names available for a character from its `sprites` keys - a
- * scoped-down twin of `WardrobeMatrix`'s `deriveAxes` that only needs the pose axis (no
- * outfit selection happens in this form). Keeps the same split rule (first underscore
- * separates `${outfit}_${pose}`, no underscore means a bare pose) so a pose picked here lines
- * up with the same pose names shown in the wardrobe grid. */
-function derivePoses(sprites: Record<string, string>): string[] {
-  const poses = new Set<string>();
-  for (const key of Object.keys(sprites)) {
-    const underscoreIndex = key.indexOf("_");
-    poses.add(underscoreIndex === -1 ? key : key.slice(underscoreIndex + 1));
-  }
-  return Array.from(poses);
-}
 
 function NextNodeSelect({
   value,
@@ -140,7 +127,13 @@ function DialogueForm({
       if (current.length > 0) return current;
       const character = characters.find((c) => c.id === value);
       const poses = character ? derivePoses(character.sprites) : [];
-      return [{ characterId: value, sprite: poses[0] ?? "neutral", position: "center" }];
+      // Same authoring intent as the quick-add toolbar's auto-seed (`onAddDialogue` in the
+      // chapter editor page): stage the newly-picked speaker on the side their `isProtagonist`
+      // flag implies, instead of always centering them - "center" only when the character
+      // somehow isn't found in the list (shouldn't happen since `value` came from this same
+      // `characters` array, but keeps the fallback safe rather than crashing on `undefined`).
+      const position: StagePosition = character ? (character.isProtagonist ? "left" : "right") : "center";
+      return [{ characterId: value, sprite: poses[0] ?? "neutral", position }];
     });
   };
 

@@ -204,9 +204,11 @@ function resolveBoxPosition(
 ): "left" | "center" | "right" {
   if (!speaker) return "center"; // narrator
   const own = staged.find((s) => s.characterId === speaker.id);
-  return own?.position ?? "right"; // speaking but not staged - default to "right" (see spec:
-  // the quick-add toolbar in Task 8 always stages the speaker, so this default is a rare
-  // defensive fallback, not the common path)
+  // Speaking but no matching staged entry: per spec, falls back to centered full-width,
+  // same as the narrator ("рамка не найдёт совпадения по characterId и по умолчанию
+  // встаёт по центру, как рассказчик") - also keeps pre-existing chapters (empty/mismatched
+  // `staged`) rendering as they always did, instead of jumping to a 78%-wide anchored box.
+  return own?.position ?? "center";
 }
 
 function DialogueBox({

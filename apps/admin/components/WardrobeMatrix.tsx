@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
+import { derivePoses } from "@/lib/sprites";
 import type { CharacterOut, OutfitOut, VariableDefinitionOut } from "@/lib/types";
 import { EffectRowsEditor, parseValue, type EffectRow } from "./EffectRowsEditor";
 
@@ -18,20 +19,17 @@ const BASE_OUTFIT = "";
  * underscore themselves, so this split is unambiguous for anything uploaded through this UI -
  * a legacy hand-typed key with an underscore inside the pose name itself could misparse, but
  * that only affects which cell it's displayed under at render time, never what gets saved:
- * every save always spreads the full existing `sprites` object and touches exactly one key. */
+ * every save always spreads the full existing `sprites` object and touches exactly one key.
+ * The pose axis is the same rule `lib/sprites.ts`'s `derivePoses` uses (shared with
+ * NodeEditorPanel.tsx and the chapter editor's quick-add) - only the outfit axis is specific to
+ * this grid, so it's derived separately here. */
 function deriveAxes(sprites: Record<string, string>): { outfits: string[]; poses: string[] } {
   const outfits = new Set<string>();
-  const poses = new Set<string>();
   for (const key of Object.keys(sprites)) {
     const underscoreIndex = key.indexOf("_");
-    if (underscoreIndex === -1) {
-      poses.add(key);
-    } else {
-      outfits.add(key.slice(0, underscoreIndex));
-      poses.add(key.slice(underscoreIndex + 1));
-    }
+    if (underscoreIndex !== -1) outfits.add(key.slice(0, underscoreIndex));
   }
-  return { outfits: Array.from(outfits), poses: Array.from(poses) };
+  return { outfits: Array.from(outfits), poses: derivePoses(sprites) };
 }
 
 function spriteKey(outfit: string, pose: string): string {

@@ -59,7 +59,12 @@ export const characterCreateSchema = z.object({
 });
 export type CharacterCreateInput = z.infer<typeof characterCreateSchema>;
 
-export const characterUpdateSchema = characterCreateSchema.partial().omit({ storyId: true });
+export const characterUpdateSchema = characterCreateSchema.partial().omit({ storyId: true }).extend({
+  // Not on `characterCreateSchema` - a character starts as non-protagonist and is promoted
+  // afterward via this update endpoint (at most one protagonist per story, enforced server-side
+  // in characters_service.update), mirroring Python's `CharacterUpdateInput.is_protagonist`.
+  isProtagonist: z.boolean().optional(),
+});
 export type CharacterUpdateInput = z.infer<typeof characterUpdateSchema>;
 
 /**
