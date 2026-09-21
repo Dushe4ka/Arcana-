@@ -6,7 +6,7 @@ import Link from "next/link";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { previewHref } from "@/lib/preview";
-import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
+import { DEFAULT_DATA_BY_TYPE, NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
 import { derivePoses } from "@/lib/sprites";
 import type { ChapterOut, CharacterOut, OutfitOut, SceneNodeOut, VariableDefinitionOut } from "@/lib/types";
 import { CharactersSection } from "@/components/CharactersSection";
@@ -144,13 +144,6 @@ export default function SceneEditorPage() {
   const nextOrder = (): number => Math.max(-1, ...nodes.map((n) => n.order)) + 1;
 
   const onCreateNode = async (type: SceneNodeOut["type"]) => {
-    const defaultDataByType: Record<SceneNodeOut["type"], object> = {
-      DIALOGUE: { text: { ru: "…" } },
-      CHOICE: {},
-      CONDITION: { when: [] },
-      EFFECT: { effects: [] },
-      END: {},
-    };
     try {
       await apiRequest("/admin/scene-nodes", {
         method: "POST",
@@ -158,7 +151,7 @@ export default function SceneEditorPage() {
           type,
           chapterId,
           order: nodes.length,
-          data: defaultDataByType[type],
+          data: type === "DIALOGUE" ? { text: { ru: "…" } } : DEFAULT_DATA_BY_TYPE[type],
         }),
       });
       load();
