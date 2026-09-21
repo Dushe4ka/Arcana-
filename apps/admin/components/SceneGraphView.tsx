@@ -287,6 +287,14 @@ export function SceneGraphView({
       // action for the same gesture. `false` or `null` (never got near a valid handle at all -
       // exactly the "dropped in empty space" case) both mean it didn't.
       if (connectionState.isValid || !connectionState.fromHandle || !reactFlowInstance) return;
+      // Defensive: every node's incoming `TargetHandle` sets `isConnectableStart={false}`
+      // (`graph-nodes/shared.tsx`), which should make it impossible for a drag to ever START
+      // there in the first place - so `fromHandle` reaching this point should always be a
+      // `"source"` handle. Checking explicitly documents that invariant rather than trusting it
+      // silently: if some future handle forgets to set the prop, treating its node as a
+      // connection source below would misattribute the drag and silently overwrite whatever
+      // that node's real outgoing connection already pointed at (`nextNodeId`/`elseNodeId`/...).
+      if (connectionState.fromHandle.type !== "source") return;
       const point = "changedTouches" in event ? event.changedTouches[0] : event;
       if (!point) return;
       setPendingConnectionSource({

@@ -33,9 +33,28 @@ const targetHandleStyle: CSSProperties = {
 };
 
 /** Every node type accepts incoming connections regardless of type, so this is the one handle
- * shape shared unconditionally across all five custom node renderers. */
+ * shape shared unconditionally across all five custom node renderers.
+ *
+ * `isConnectableStart={false}` overrides React Flow's own default of `true` on every handle
+ * (source AND target alike) - without it, a drag can be STARTED from this incoming dot just as
+ * easily as from an outgoing one, which breaks the design's core safety property ("wrong number
+ * of handles are structurally impossible, so an impossible connection has no handle to drag
+ * from"): this universal target handle would be exactly such a handle, and a drag started here
+ * then dropped in empty space would have `SceneGraphView`'s `onConnectEnd` misread this node as
+ * the SOURCE of a brand-new connection, silently overwriting whichever field (`nextNodeId`,
+ * `elseNodeId`, ...) that node's own outgoing connection already used. Ending a connection here
+ * (dragging some other node's outgoing handle onto this one) is unaffected - that's
+ * `isConnectableEnd`, left at its default `true`. */
 export function TargetHandle() {
-  return <Handle type="target" position={Position.Left} style={targetHandleStyle} className={handleClassName} />;
+  return (
+    <Handle
+      type="target"
+      position={Position.Left}
+      isConnectableStart={false}
+      style={targetHandleStyle}
+      className={handleClassName}
+    />
+  );
 }
 
 /** A single, unlabeled output handle - DIALOGUE/EFFECT's one "next" connection, where the
