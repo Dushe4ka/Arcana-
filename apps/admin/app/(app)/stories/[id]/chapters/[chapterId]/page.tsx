@@ -9,6 +9,7 @@ import { previewHref } from "@/lib/preview";
 import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
 import { derivePoses } from "@/lib/sprites";
 import type { ChapterOut, CharacterOut, OutfitOut, SceneNodeOut, VariableDefinitionOut } from "@/lib/types";
+import { CharactersSection } from "@/components/CharactersSection";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
 import { SceneGraphView } from "@/components/SceneGraphView";
@@ -23,20 +24,23 @@ export default function SceneEditorPage() {
   const [chapter, setChapter] = useState<ChapterOut | null>(null);
   const [nodes, setNodes] = useState<SceneNodeOut[]>([]);
   const [characters, setCharacters] = useState<CharacterOut[]>([]);
+  const [variableDefinitions, setVariableDefinitions] = useState<VariableDefinitionOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [view, setView] = useState<"list" | "graph">("list");
+  const [view, setView] = useState<"list" | "graph" | "characters">("list");
 
   const load = async () => {
     try {
-      const [chapterData, nodesData, charactersData] = await Promise.all([
+      const [chapterData, nodesData, charactersData, variableDefinitionsData] = await Promise.all([
         apiRequest<ChapterOut>(`/admin/chapters/${chapterId}`),
         apiRequest<SceneNodeOut[]>(`/admin/scene-nodes?chapterId=${chapterId}`),
         apiRequest<CharacterOut[]>(`/admin/characters?storyId=${storyId}`),
+        apiRequest<VariableDefinitionOut[]>(`/admin/variables?storyId=${storyId}`),
       ]);
       setChapter(chapterData);
       setNodes(nodesData);
       setCharacters(charactersData);
+      setVariableDefinitions(variableDefinitionsData);
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось загрузить главу");
@@ -570,6 +574,12 @@ export default function SceneEditorPage() {
         >
           Граф
         </button>
+        <button
+          onClick={() => setView("characters")}
+          className={view === "characters" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Персонажи
+        </button>
       </div>
 
       {view === "list" && (
@@ -626,6 +636,14 @@ export default function SceneEditorPage() {
       )}
       {view === "graph" && (
         <SceneGraphView nodes={nodes} characters={characters} storyId={storyId} chapterId={chapterId} onNodesChanged={load} />
+      )}
+      {view === "characters" && (
+        <CharactersSection
+          storyId={storyId}
+          characters={characters}
+          variableDefinitions={variableDefinitions}
+          onChanged={load}
+        />
       )}
     </div>
   );
