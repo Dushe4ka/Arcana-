@@ -17,8 +17,9 @@ from app.schemas.responses import (
     SeasonOut,
     StoryDetailOut,
     StoryOut,
+    VariableUsageOut,
 )
-from app.services import stories_service
+from app.services import stories_service, variable_usage_service
 
 # Content-authoring endpoints for the admin panel. Every route here requires a
 # WRITER/EDITOR/ADMIN account - players never touch this router.
@@ -37,6 +38,11 @@ async def list_stories(db: AsyncSession = Depends(get_db)):
 @router.get("/stories/{story_id}", response_model=StoryDetailOut)
 async def get_story(story_id: str, db: AsyncSession = Depends(get_db)):
     return await stories_service.get_by_id(db, story_id)
+
+
+@router.get("/stories/{story_id}/variable-usages", response_model=list[VariableUsageOut])
+async def list_variable_usages(story_id: str, db: AsyncSession = Depends(get_db)):
+    return await variable_usage_service.list_usages(db, story_id)
 
 
 @router.post("/stories", status_code=status.HTTP_201_CREATED, response_model=StoryOut)
