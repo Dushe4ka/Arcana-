@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -312,6 +312,34 @@ export function SceneGraphView({
   // work from any call site once captured, so this sidesteps the provider entirely.
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance | null>(null);
 
+  // Auto-centers the canvas on `selectedNodeId` whenever it becomes selected from OUTSIDE this
+  // component - a same-chapter "Перейти" click in `VariableReferencesPanel` (which remounts this
+  // view, since it lives behind a `view === "graph"` tab, already carrying a non-null
+  // `selectedNodeId`) or an initial `?node=` query param page.tsx already applied by the time
+  // this mounts. Deliberately NOT triggered by a plain in-canvas node click (`onNodeClick`
+  // below), which already brings the node's editor panel into view without needing a canned pan
+  // across the canvas - `autoCenteredNodeIds` is how the two are told apart: `onNodeClick` marks
+  // a node's id as "seen" at click time, so this effect's own run (triggered by the very same
+  // `onSelectNode` call flowing the id back down as a prop) finds it already marked and skips
+  // centering; an id set from outside was never marked, so it centers exactly once per id.
+  const autoCenteredNodeIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!selectedNodeId || !reactFlowInstance) return;
+    if (autoCenteredNodeIds.current.has(selectedNodeId)) return;
+    autoCenteredNodeIds.current.add(selectedNodeId);
+    const node = localNodes.find((n) => n.id === selectedNodeId);
+    if (!node) return;
+    // `NodeCard`'s fixed 200px width (graph-nodes/shared.tsx) - offsetting by half of it centers
+    // closer to the node's visual middle than its top-left corner (`node.position`). Height
+    // varies by node content (no fixed value to offset by), so this doesn't attempt a matching
+    // vertical correction - "the node ends up visible and roughly centered" is the actual
+    // requirement, not pixel-perfect centering.
+    reactFlowInstance.setCenter(node.position.x + 100, node.position.y + 60, {
+      zoom: 1,
+      duration: 500,
+    });
+  }, [selectedNodeId, reactFlowInstance, localNodes]);
+
   // Flow-space (not screen-space) position of a pending click-to-create/drag-to-empty-space
   // menu - the same coordinate system `canvasX`/`canvasY` and node positions already use.
   // Rendered via `<ViewportPortal>` below so the menu pans/zooms together with the canvas
@@ -491,6 +519,11 @@ export function SceneGraphView({
             onNodesChange={onNodesChange}
             onNodeDragStop={onNodeDragStop}
             onNodeClick={(_, node) => {
+              // Marks this id as already "seen" via an in-canvas click, BEFORE `onSelectNode`
+              // propagates it back down as the `selectedNodeId` prop - see the auto-center
+              // effect above for why this is what keeps a plain click from also triggering a
+              // canned pan-to-center.
+              autoCenteredNodeIds.current.add(node.id);
               onSelectNode(node.id);
               setSelectedEdgeId(null);
             }}

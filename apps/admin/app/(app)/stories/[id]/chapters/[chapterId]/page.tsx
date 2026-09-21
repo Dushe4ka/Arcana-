@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { apiRequest, ApiError } from "@/lib/api";
@@ -13,6 +13,7 @@ import { CharactersSection } from "@/components/CharactersSection";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
 import { SceneGraphView } from "@/components/SceneGraphView";
+import { VariableReferencesPanel } from "@/components/VariableReferencesPanel";
 
 // Task 3's read-side key (`play_service.py`/`preview_service.py` already look this variable up
 // as a speaker-name override, falling back to `Character.name`) - this file is the write side:
@@ -21,13 +22,51 @@ const DISPLAY_NAME_OVERRIDE_KEY = "display_name_override";
 
 export default function SceneEditorPage() {
   const { id: storyId, chapterId } = useParams<{ id: string; chapterId: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [chapter, setChapter] = useState<ChapterOut | null>(null);
   const [nodes, setNodes] = useState<SceneNodeOut[]>([]);
   const [characters, setCharacters] = useState<CharacterOut[]>([]);
   const [variableDefinitions, setVariableDefinitions] = useState<VariableDefinitionOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [view, setView] = useState<"list" | "graph" | "characters">("list");
+  const [view, setView] = useState<"list" | "graph" | "characters" | "variables">("list");
+
+  // `?view=graph&node=<id>` on initial load - written by `VariableReferencesPanel`'s "Перейти"
+  // for a CROSS-chapter usage (a real navigation to this page), so a scenarist landing here from
+  // another chapter's Variables tab sees the right node already selected on the Граф tab.
+  // `searchParams` itself never changes after mount on this page (no in-page control edits the
+  // URL query string), so this effect only ever needs to run once, on mount - but it's kept
+  // keyed on `searchParams` anyway (rather than an empty array) since `useSearchParams` is the
+  // one Next.js-recommended way to read it and an exhaustive-deps lint would otherwise flag an
+  // empty array as stale.
+  useEffect(() => {
+    const requestedView = searchParams.get("view");
+    const requestedNode = searchParams.get("node");
+    if (requestedView === "graph") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time URL->state sync on mount, not a fetch
+      setView("graph");
+    }
+    if (requestedNode) {
+      setSelectedNodeId(requestedNode);
+    }
+  }, [searchParams]);
+
+  // Single "Перейти" entry point handed down to `VariableReferencesPanel` - see that
+  // component's own doc comment for why a prop-drilled callback was chosen over a
+  // `CustomEvent`. Same-chapter usage: just select+switch tabs locally, no navigation (so
+  // `SceneGraphView`'s own `selectedNodeId` effect - see that file - sees a genuinely new
+  // externally-set value and re-centers). Cross-chapter usage: a real Next.js navigation to the
+  // target chapter's page with `?view=graph&node=` - handled by the effect above once that page
+  // mounts.
+  const onNavigateToUsage = (targetChapterId: string, nodeId: string) => {
+    if (targetChapterId === chapterId) {
+      setView("graph");
+      setSelectedNodeId(nodeId);
+    } else {
+      router.push(`/stories/${storyId}/chapters/${targetChapterId}?view=graph&node=${nodeId}`);
+    }
+  };
 
   const load = async () => {
     try {
@@ -576,6 +615,12 @@ export default function SceneEditorPage() {
         >
           Персонажи
         </button>
+        <button
+          onClick={() => setView("variables")}
+          className={view === "variables" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Переменные
+        </button>
       </div>
 
       {view === "list" && (
@@ -648,6 +693,13 @@ export default function SceneEditorPage() {
           characters={characters}
           variableDefinitions={variableDefinitions}
           onChanged={load}
+        />
+      )}
+      {view === "variables" && (
+        <VariableReferencesPanel
+          storyId={storyId}
+          currentChapterId={chapterId}
+          onNavigate={onNavigateToUsage}
         />
       )}
     </div>
