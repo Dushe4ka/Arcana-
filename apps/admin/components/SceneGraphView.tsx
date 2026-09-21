@@ -22,7 +22,12 @@ import Link from "next/link";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { previewHref } from "@/lib/preview";
-import { DEFAULT_DATA_BY_TYPE, NODE_TYPE_LABELS } from "@/lib/scene-nodes";
+import {
+  currentStagedLookAt,
+  DEFAULT_DATA_BY_TYPE,
+  NODE_TYPE_LABELS,
+  storyModeLabel,
+} from "@/lib/scene-nodes";
 import type { CharacterOut, SceneNodeOut } from "@/lib/types";
 import { NodeEditorPanel } from "./NodeEditorPanel";
 import { NodeTypeMenu, type NodeTypeChoice } from "./NodeTypeMenu";
@@ -31,6 +36,13 @@ import { ConditionGraphNode } from "./graph-nodes/ConditionGraphNode";
 import { DeletableEdge, type DeletableEdgeData } from "./graph-nodes/DeletableEdge";
 import { DialogueGraphNode } from "./graph-nodes/DialogueGraphNode";
 import { EndGraphNode } from "./graph-nodes/EndGraphNode";
+import type { GraphNodeData } from "./graph-nodes/shared";
+
+/** Session-local only - "История" (a scenarist-friendly speaker+text view, the friendlier
+ * default for someone who just opened the graph) vs. "Глубоко" (the existing full technical
+ * summary). Deliberately `useState`, never persisted to the DB - purely how this one browser
+ * tab currently likes to look at the graph. */
+type ViewMode = "story" | "deep";
 
 // Module-level constants (not recreated per render) - React Flow warns if `nodeTypes`/`edgeTypes`
 // is a fresh object every render (it treats identity change as "the type map itself changed" and
@@ -79,7 +91,8 @@ function edgesForNode(node: SceneNodeOut): Edge<{ link: EdgeLink }>[] {
     }
   };
 
-  if (node.type === "DIALOGUE" || node.type === "EFFECT") addEdge(d.nextNodeId, "next", "nextNodeId");
+  if (node.type === "DIALOGUE" || node.type === "EFFECT")
+    addEdge(d.nextNodeId, "next", "nextNodeId");
   if (node.type === "CONDITION") {
     addEdge(d.thenNodeId, "then", "thenNodeId", "да");
     addEdge(d.elseNodeId, "else", "elseNodeId", "нет");
@@ -106,6 +119,7 @@ export function SceneGraphView({
   characters,
   storyId,
   chapterId,
+  entryNodeId,
   onNodesChanged,
   selectedNodeId,
   onSelectNode,
@@ -114,21 +128,50 @@ export function SceneGraphView({
   characters: CharacterOut[];
   storyId: string;
   chapterId: string;
+  /** The chapter's `entryNodeId` (`ChapterOut.entryNodeId`) - seeds `currentStagedLookAt`'s
+   * forward walk in "История" mode so a DIALOGUE node's thumbnail reflects a character's
+   * sprite/outfit as of that point in the story, not just whatever `staged` entry it happens to
+   * carry itself. */
+  entryNodeId: string | null;
   onNodesChanged: () => void;
   selectedNodeId: string | null;
   onSelectNode: (id: string | null) => void;
 }) {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
-  const flowNodes = useMemo<Node<SceneNodeOut>[]>(
+  // Defaults to "История" - the friendlier default for a scenarist who just opened the graph.
+  // Session-local (see `ViewMode`'s own comment) - never written back to the chapter/node data.
+  const [viewMode, setViewMode] = useState<ViewMode>("story");
+
+  const flowNodes = useMemo<Node<GraphNodeData>[]>(
     () =>
-      sceneNodes.map((n, i) => ({
-        id: n.id,
-        type: n.type.toLowerCase(),
-        position: { x: n.canvasX ?? (i % 5) * 220, y: n.canvasY ?? Math.floor(i / 5) * 140 },
-        data: n,
-      })),
-    [sceneNodes],
+      sceneNodes.map((n, i) => {
+        // Only DIALOGUE nodes get a story-mode label/thumbnail at all (see `storyModeLabel`'s
+        // own fallback for every other type) - and only computed in "История" mode in the first
+        // place, since `currentStagedLookAt`'s walk is pure overhead in "Глубоко".
+        let storyLabel: string | undefined;
+        let storyThumbnailUrl: string | null | undefined;
+        if (viewMode === "story" && n.type === "DIALOGUE") {
+          storyLabel = storyModeLabel(n, characters);
+          const speakerCharacterId = (n.data as { speakerCharacterId?: string | null })
+            .speakerCharacterId;
+          const speaker = speakerCharacterId
+            ? characters.find((c) => c.id === speakerCharacterId)
+            : null;
+          if (speaker) {
+            const lookAt = currentStagedLookAt(sceneNodes, entryNodeId, n.id);
+            const spriteKey = lookAt[speaker.id]?.sprite;
+            storyThumbnailUrl = spriteKey ? (speaker.sprites[spriteKey] ?? null) : null;
+          }
+        }
+        return {
+          id: n.id,
+          type: n.type.toLowerCase(),
+          position: { x: n.canvasX ?? (i % 5) * 220, y: n.canvasY ?? Math.floor(i / 5) * 140 },
+          data: { ...n, storyLabel, storyThumbnailUrl },
+        };
+      }),
+    [sceneNodes, characters, viewMode, entryNodeId],
   );
 
   // Surfaces a failed connect/disconnect (drag-to-connect, drag-to-empty-space's follow-up
@@ -175,7 +218,9 @@ export function SceneGraphView({
       setConnectionError(null);
       connectNodes(sourceNode, connection.sourceHandle, connection.target)
         .then(onNodesChanged)
-        .catch((err) => setConnectionError(err instanceof ApiError ? err.message : "Не удалось создать связь"));
+        .catch((err) =>
+          setConnectionError(err instanceof ApiError ? err.message : "Не удалось создать связь"),
+        );
     },
     [sceneNodes, connectNodes, onNodesChanged],
   );
@@ -208,16 +253,12 @@ export function SceneGraphView({
 
   const flowEdges = useMemo<Edge<DeletableEdgeData>[]>(
     () =>
-      sceneNodes
-        .flatMap(edgesForNode)
-        .map(
-          (edge): Edge<DeletableEdgeData> => ({
-            ...edge,
-            type: "deletable",
-            selected: edge.id === selectedEdgeId,
-            data: { onDelete: () => deleteEdgeLink(edge.data!.link) },
-          }),
-        ),
+      sceneNodes.flatMap(edgesForNode).map((edge): Edge<DeletableEdgeData> => ({
+        ...edge,
+        type: "deletable",
+        selected: edge.id === selectedEdgeId,
+        data: { onDelete: () => deleteEdgeLink(edge.data!.link) },
+      })),
     [sceneNodes, selectedEdgeId, deleteEdgeLink],
   );
 
@@ -226,7 +267,7 @@ export function SceneGraphView({
   // before a drag ends), so this can't just be `flowNodes` directly. Resynced whenever a
   // reload produces a genuinely new `flowNodes` (e.g. after a save elsewhere changes node
   // content), not on every render.
-  const [localNodes, setLocalNodes] = useState<Node<SceneNodeOut>[]>(flowNodes);
+  const [localNodes, setLocalNodes] = useState<Node<GraphNodeData>[]>(flowNodes);
   useEffect(() => {
     // Syncing controlled React Flow node state from the `sceneNodes` prop after a reload,
     // not a fetch itself, but the same rule flags any setState reachable from an effect
@@ -239,17 +280,20 @@ export function SceneGraphView({
   // inference across the whole component: `NodeChange`/`applyNodeChanges` are typed generically
   // over the library's own `Node`, and only ever describe position/dimension/selection changes
   // for drag interactions here (never an add/replace that would fabricate a `data` payload out
-  // of nothing) - so the cast back to `Node<SceneNodeOut>[]` is safe in practice, not just at
+  // of nothing) - so the cast back to `Node<GraphNodeData>[]` is safe in practice, not just at
   // the type level.
   const onNodesChange = useCallback((changes: NodeChange[]) => {
-    setLocalNodes((nds) => applyNodeChanges(changes, nds as Node[]) as Node<SceneNodeOut>[]);
+    setLocalNodes((nds) => applyNodeChanges(changes, nds as Node[]) as Node<GraphNodeData>[]);
   }, []);
 
   const onNodeDragStop = useCallback(async (_: unknown, node: Node) => {
     try {
       await apiRequest(`/admin/scene-nodes/${node.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ canvasX: Math.round(node.position.x), canvasY: Math.round(node.position.y) }),
+        body: JSON.stringify({
+          canvasX: Math.round(node.position.x),
+          canvasY: Math.round(node.position.y),
+        }),
       });
     } catch {
       // Position persistence failing isn't worth blocking the drag interaction over - the
@@ -272,7 +316,9 @@ export function SceneGraphView({
   // menu - the same coordinate system `canvasX`/`canvasY` and node positions already use.
   // Rendered via `<ViewportPortal>` below so the menu pans/zooms together with the canvas
   // instead of this component having to keep it in sync with the viewport transform itself.
-  const [pendingMenuPosition, setPendingMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [pendingMenuPosition, setPendingMenuPosition] = useState<{ x: number; y: number } | null>(
+    null,
+  );
 
   // Set only when the menu was opened by a drag-to-empty-space gesture (Step 4) - remembers
   // which node/handle the drag started from so `onPickFromEmptyCanvas` can wire up the new
@@ -304,7 +350,9 @@ export function SceneGraphView({
         nodeId: connectionState.fromHandle.nodeId,
         handleId: connectionState.fromHandle.id ?? null,
       });
-      setPendingMenuPosition(reactFlowInstance.screenToFlowPosition({ x: point.clientX, y: point.clientY }));
+      setPendingMenuPosition(
+        reactFlowInstance.screenToFlowPosition({ x: point.clientX, y: point.clientY }),
+      );
     },
     [reactFlowInstance],
   );
@@ -338,7 +386,10 @@ export function SceneGraphView({
   // the request body). Only `SceneNodeUpdateInput` (the PATCH schema `onNodeDragStop` already
   // uses) has them. So this follows up the create with the same PATCH `onNodeDragStop` makes
   // after a drag, rather than trying to set the position at create time.
-  const onPickFromEmptyCanvas = async (choice: NodeTypeChoice, position: { x: number; y: number }) => {
+  const onPickFromEmptyCanvas = async (
+    choice: NodeTypeChoice,
+    position: { x: number; y: number },
+  ) => {
     if (isCreatingNode) return;
     setIsCreatingNode(true);
     setCreateNodeError(null);
@@ -364,7 +415,10 @@ export function SceneGraphView({
       try {
         await apiRequest(`/admin/scene-nodes/${newNode.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ canvasX: Math.round(position.x), canvasY: Math.round(position.y) }),
+          body: JSON.stringify({
+            canvasX: Math.round(position.x),
+            canvasY: Math.round(position.y),
+          }),
         });
       } catch {
         // Same tradeoff as `onNodeDragStop` above: not worth failing the whole click-to-create
@@ -381,7 +435,9 @@ export function SceneGraphView({
             // The node itself was created fine - only the follow-up connection failed. Surfaced
             // through the same `connectionError` channel edge deletes/drag-connects use, not
             // `createNodeError`, since node creation itself succeeded.
-            setConnectionError(err instanceof ApiError ? err.message : "Узел создан, но не удалось создать связь");
+            setConnectionError(
+              err instanceof ApiError ? err.message : "Узел создан, но не удалось создать связь",
+            );
           }
         }
       }
@@ -398,88 +454,115 @@ export function SceneGraphView({
   };
 
   return (
-    <div className="flex h-[600px] gap-4">
-      <div className="relative flex-1 rounded border border-neutral-200">
-        {connectionError && (
-          <div className="absolute z-30 m-2 rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-700 shadow">
-            {connectionError}
-            <button type="button" onClick={() => setConnectionError(null)} className="ml-2 underline">
-              Скрыть
-            </button>
-          </div>
-        )}
-        <ReactFlow
-          nodes={localNodes}
-          edges={flowEdges}
-          nodeTypes={NODE_TYPES}
-          edgeTypes={EDGE_TYPES}
-          onNodesChange={onNodesChange}
-          onNodeDragStop={onNodeDragStop}
-          onNodeClick={(_, node) => {
-            onSelectNode(node.id);
-            setSelectedEdgeId(null);
-          }}
-          onConnect={onConnect}
-          onConnectEnd={onConnectEnd}
-          onEdgeClick={(_, edge) => setSelectedEdgeId((prev) => (prev === edge.id ? null : edge.id))}
-          onPaneClick={(event) => {
-            setSelectedEdgeId(null);
-            if (!reactFlowInstance) return;
-            setPendingConnectionSource(null);
-            setPendingMenuPosition(reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY }));
-          }}
-          onInit={setReactFlowInstance}
-          deleteKeyCode={null}
-          fitView
+    <div>
+      <div className="mb-2 flex gap-2 text-xs">
+        <button
+          onClick={() => setViewMode("story")}
+          className={viewMode === "story" ? "font-semibold underline" : "text-neutral-600"}
         >
-          <Background />
-          <Controls />
-          <MiniMap />
-          {pendingMenuPosition && (
-            <ViewportPortal>
-              <NodeTypeMenu
-                position={pendingMenuPosition}
-                storyId={storyId}
-                characters={characters}
-                disabled={isCreatingNode}
-                error={createNodeError}
-                onPick={(choice) => onPickFromEmptyCanvas(choice, pendingMenuPosition)}
-                onClose={() => {
-                  setPendingMenuPosition(null);
-                  setPendingConnectionSource(null);
-                  setCreateNodeError(null);
-                }}
-                onNewCharacter={onNodesChanged}
-              />
-            </ViewportPortal>
-          )}
-        </ReactFlow>
+          История
+        </button>
+        <button
+          onClick={() => setViewMode("deep")}
+          className={viewMode === "deep" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Глубоко
+        </button>
       </div>
-      {selectedNode && (
-        <div className="w-80 shrink-0 overflow-y-auto rounded border border-neutral-200 bg-white p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-sm font-medium">{NODE_TYPE_LABELS[selectedNode.type]}</span>
-            <div className="flex items-center gap-3">
-              <Link
-                href={previewHref(storyId, chapterId, selectedNode.id)}
-                className="text-xs text-neutral-600 underline"
+      <div className="flex h-[600px] gap-4">
+        <div className="relative flex-1 rounded border border-neutral-200">
+          {connectionError && (
+            <div className="absolute z-30 m-2 rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs text-red-700 shadow">
+              {connectionError}
+              <button
+                type="button"
+                onClick={() => setConnectionError(null)}
+                className="ml-2 underline"
               >
-                ▶ Превью отсюда
-              </Link>
-              <button onClick={() => onSelectNode(null)} className="text-xs text-neutral-500 underline">
-                Закрыть
+                Скрыть
               </button>
             </div>
-          </div>
-          <NodeEditorPanel
-            key={selectedNode.id}
-            node={selectedNode}
-            allNodes={sceneNodes}
-            characters={characters}
-            onSaved={onNodesChanged}
-          />
+          )}
+          <ReactFlow
+            nodes={localNodes}
+            edges={flowEdges}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            onNodesChange={onNodesChange}
+            onNodeDragStop={onNodeDragStop}
+            onNodeClick={(_, node) => {
+              onSelectNode(node.id);
+              setSelectedEdgeId(null);
+            }}
+            onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
+            onEdgeClick={(_, edge) =>
+              setSelectedEdgeId((prev) => (prev === edge.id ? null : edge.id))
+            }
+            onPaneClick={(event) => {
+              setSelectedEdgeId(null);
+              if (!reactFlowInstance) return;
+              setPendingConnectionSource(null);
+              setPendingMenuPosition(
+                reactFlowInstance.screenToFlowPosition({ x: event.clientX, y: event.clientY }),
+              );
+            }}
+            onInit={setReactFlowInstance}
+            deleteKeyCode={null}
+            fitView
+          >
+            <Background />
+            <Controls />
+            <MiniMap />
+            {pendingMenuPosition && (
+              <ViewportPortal>
+                <NodeTypeMenu
+                  position={pendingMenuPosition}
+                  storyId={storyId}
+                  characters={characters}
+                  disabled={isCreatingNode}
+                  error={createNodeError}
+                  onPick={(choice) => onPickFromEmptyCanvas(choice, pendingMenuPosition)}
+                  onClose={() => {
+                    setPendingMenuPosition(null);
+                    setPendingConnectionSource(null);
+                    setCreateNodeError(null);
+                  }}
+                  onNewCharacter={onNodesChanged}
+                />
+              </ViewportPortal>
+            )}
+          </ReactFlow>
         </div>
-      )}
+        {selectedNode && (
+          <div className="w-80 shrink-0 overflow-y-auto rounded border border-neutral-200 bg-white p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-medium">{NODE_TYPE_LABELS[selectedNode.type]}</span>
+              <div className="flex items-center gap-3">
+                <Link
+                  href={previewHref(storyId, chapterId, selectedNode.id)}
+                  className="text-xs text-neutral-600 underline"
+                >
+                  ▶ Превью отсюда
+                </Link>
+                <button
+                  onClick={() => onSelectNode(null)}
+                  className="text-xs text-neutral-500 underline"
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+            <NodeEditorPanel
+              key={selectedNode.id}
+              node={selectedNode}
+              allNodes={sceneNodes}
+              characters={characters}
+              onSaved={onNodesChanged}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

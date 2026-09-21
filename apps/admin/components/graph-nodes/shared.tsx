@@ -68,7 +68,12 @@ export function SingleOutputHandle({ id, color }: { id: string; color: string })
       position={Position.Right}
       id={id}
       className={handleClassName}
-      style={{ width: HANDLE_SIZE, height: HANDLE_SIZE, border: "2px solid white", background: color }}
+      style={{
+        width: HANDLE_SIZE,
+        height: HANDLE_SIZE,
+        border: "2px solid white",
+        background: color,
+      }}
     />
   );
 }
@@ -81,7 +86,15 @@ export function SingleOutputHandle({ id, color }: { id: string; color: string })
  * the node grow to fit exactly N handles with no overlap and no height math to keep in sync
  * with the row count - the CHOICE node's variable option count is exactly the case this
  * matters for. */
-export function OutputHandleRow({ id, label, color }: { id: string; label: string; color: string }) {
+export function OutputHandleRow({
+  id,
+  label,
+  color,
+}: {
+  id: string;
+  label: string;
+  color: string;
+}) {
   return (
     <div className="relative mt-1 flex h-5 items-center justify-end gap-1 pr-2 text-[10px] text-neutral-500">
       {/* `min-w-0` overrides the flex item's default `min-width: auto` (which pins a
@@ -96,11 +109,28 @@ export function OutputHandleRow({ id, label, color }: { id: string; label: strin
         position={Position.Right}
         id={id}
         className={handleClassName}
-        style={{ width: HANDLE_SIZE, height: HANDLE_SIZE, border: "2px solid white", background: color }}
+        style={{
+          width: HANDLE_SIZE,
+          height: HANDLE_SIZE,
+          border: "2px solid white",
+          background: color,
+        }}
       />
     </div>
   );
 }
+
+/** `SceneNodeOut` plus the "История" mode extras `SceneGraphView` computes once per node in its
+ * `flowNodes` memo (`storyModeLabel`/`currentStagedLookAt` in `lib/scene-nodes.ts`), carried on
+ * the React Flow node's `data` rather than threaded through `nodeTypes` as separate props -
+ * `nodeTypes` is a module-level constant (see the comment at its definition in
+ * `SceneGraphView.tsx`) and would need a different component identity per view mode otherwise.
+ * Left `undefined` for every non-DIALOGUE node and for DIALOGUE nodes in "Глубоко" mode, in
+ * which case `NodeCard` falls back to `nodeSummary`. */
+export type GraphNodeData = SceneNodeOut & {
+  storyLabel?: string;
+  storyThumbnailUrl?: string | null;
+};
 
 /** Outer card every custom node renders. A custom `nodeTypes` entry gets none of the default
  * node's `.react-flow__node-default` styling for free, so this recreates the same look (white
@@ -110,10 +140,19 @@ export function NodeCard({
   node,
   selected,
   children,
+  label,
+  thumbnailUrl,
 }: {
   node: SceneNodeOut;
   selected: boolean;
   children?: ReactNode;
+  /** Overrides the default `nodeSummary(node)` line - `DialogueGraphNode` passes `storyLabel`
+   * here in "История" mode (speaker + text) instead of the raw technical summary. */
+  label?: string;
+  /** Best-effort speaker thumbnail (story mode only, `currentStagedLookAt`). Omitted entirely
+   * (no placeholder box) when there's no resolved sprite - the common case for narrator lines
+   * and characters without a matching sprite key. */
+  thumbnailUrl?: string | null;
 }) {
   return (
     <div
@@ -124,7 +163,15 @@ export function NodeCard({
     >
       <TargetHandle />
       <p className="font-medium text-neutral-700">{NODE_TYPE_LABELS[node.type]}</p>
-      <p className="mt-0.5 line-clamp-3 whitespace-pre-line text-neutral-600">{nodeSummary(node)}</p>
+      <div className="mt-0.5 flex items-start gap-2">
+        {thumbnailUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- arbitrary uploaded-file URLs, not a static local asset next/image can optimize
+          <img src={thumbnailUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+        )}
+        <p className="line-clamp-3 min-w-0 whitespace-pre-line text-neutral-600">
+          {label ?? nodeSummary(node)}
+        </p>
+      </div>
       {children}
     </div>
   );

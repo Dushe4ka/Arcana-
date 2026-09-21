@@ -636,6 +636,7 @@ export default function SceneEditorPage() {
           characters={characters}
           storyId={storyId}
           chapterId={chapterId}
+          entryNodeId={chapter.entryNodeId}
           onNodesChanged={load}
           selectedNodeId={selectedNodeId}
           onSelectNode={setSelectedNodeId}
