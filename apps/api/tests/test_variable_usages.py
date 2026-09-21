@@ -1,6 +1,8 @@
 from app.models.content import ChoiceOption, SceneNode, VariableDefinition
 from app.models.enums import SceneNodeType
 
+NONEXISTENT_STORY_ID = "00000000-0000-0000-0000-000000000000"
+
 
 async def test_variable_usage_across_seasons(client, make_user, auth_headers, make_story, db_session):
     writer = await make_user("writer-varusage@example.com", role="WRITER")
@@ -145,3 +147,83 @@ async def test_variable_usage_definition_with_zero_usages_still_listed(
     assert len(body) == 1
     assert body[0]["definition"]["key"] == "never_used"
     assert body[0]["usages"] == []
+
+
+async def test_variable_usage_nonexistent_story_returns_404(client, make_user, auth_headers):
+    writer = await make_user("writer-varusage-404@example.com", role="WRITER")
+
+    response = await client.get(
+        f"/api/admin/stories/{NONEXISTENT_STORY_ID}/variable-usages", headers=auth_headers(writer)
+    )
+    assert response.status_code == 404
+    body = response.json()
+    assert body["message"] == "История не найдена"
+    assert body["statusCode"] == 404
+
+
+async def test_variable_usage_character_scoped_normalization(
+    client, make_user, auth_headers, make_story, make_character, db_session
+):
+    """Regression test: VariableDefinition.character_id is a uuid.UUID | None column, while
+    Effect.character_id / Condition.character_id are plain strings inside JSONB. The service
+    must normalize the UUID to str before comparing (key, character_id) pairs - getting this
+    wrong (comparing a UUID object against a str) makes every character-scoped variable's
+    usage list silently empty, and this is exactly what this test would catch.
+    """
+    writer = await make_user("writer-varusage-charscope@example.com", role="WRITER")
+    story = await make_story()
+    character = await make_character(story, name={"ru": "Алекс"})
+    other_character = await make_character(story, name={"ru": "Джордан"})
+
+    definition = VariableDefinition(
+        story_id=story.id,
+        key="charm",
+        label={"ru": "Обаяние"},
+        type="NUMBER",
+        default_value=0,
+        character_id=character.id,
+    )
+    other_definition = VariableDefinition(
+        story_id=story.id,
+        key="charm",
+        label={"ru": "Обаяние"},
+        type="NUMBER",
+        default_value=0,
+        character_id=other_character.id,
+    )
+    db_session.add_all([definition, other_definition])
+    await db_session.flush()
+
+    from app.models.content import Chapter, Season
+
+    season = Season(story_id=story.id, index=1, title={"ru": "Сезон 1"})
+    db_session.add(season)
+    await db_session.flush()
+    chapter = Chapter(season_id=season.id, index=1, title={"ru": "Серия 1"})
+    db_session.add(chapter)
+    await db_session.flush()
+    effect_node = SceneNode(
+        chapter_id=chapter.id,
+        type=SceneNodeType.EFFECT,
+        order=0,
+        data={
+            "effects": [{"variableKey": "charm", "characterId": str(character.id), "op": "SET", "value": 5}]
+        },
+    )
+    db_session.add(effect_node)
+    await db_session.commit()
+
+    response = await client.get(
+        f"/api/admin/stories/{story.id}/variable-usages", headers=auth_headers(writer)
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 2
+
+    matched_entry = next(e for e in body if e["definition"]["characterId"] == str(character.id))
+    assert len(matched_entry["usages"]) == 1
+    assert matched_entry["usages"][0]["role"] == "sets"
+    assert matched_entry["usages"][0]["nodeId"] == str(effect_node.id)
+
+    unmatched_entry = next(e for e in body if e["definition"]["characterId"] == str(other_character.id))
+    assert unmatched_entry["usages"] == []

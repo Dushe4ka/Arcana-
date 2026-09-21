@@ -9,6 +9,7 @@ visible_when/effects) and a single JSONB path query covering all of them would b
 than reading the small number of nodes a typical story has (hundreds, not millions) directly.
 """
 
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,7 +30,7 @@ async def list_usages(db: AsyncSession, story_id: str) -> list[dict]:
         )
     )
     if not story:
-        return []
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "История не найдена")
 
     # (variable_key, character_id) -> list of usage dicts, built once by a single pass over
     # every node/option in the story, then grouped per-definition below.
