@@ -88,7 +88,13 @@ export function NodeTypeMenu({
   return (
     <div
       ref={wrapperRef}
-      className="absolute z-20 w-56 rounded border border-neutral-300 bg-white p-3 shadow-lg"
+      // `pointer-events-auto` is required here: `@xyflow/react`'s own stylesheet sets
+      // `.react-flow__viewport { pointer-events: none }` (nodes/edges opt back in
+      // individually), and this component's caller renders it inside a `<ViewportPortal>`,
+      // which sits inside that same viewport element. Without this override every button
+      // below is inert to a real mouse click - the click hit-tests straight through to the
+      // canvas pane underneath instead of this menu (confirmed live via a Task 8 walkthrough).
+      className="pointer-events-auto absolute z-20 w-56 rounded border border-neutral-300 bg-white p-3 shadow-lg"
       style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
     >
       <p className="mb-2 text-xs font-medium text-neutral-500">Новый узел</p>
