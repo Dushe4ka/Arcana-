@@ -193,8 +193,9 @@ export default function SceneEditorPage() {
     if (isQuickActionPending) return;
     setIsQuickActionPending(true);
     try {
+      const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null;
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
-      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+      const previousLastNode = selectedNode ?? (sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null);
 
       const character = characterId ? characters.find((c) => c.id === characterId) ?? null : null;
       const staged = character
@@ -289,8 +290,9 @@ export default function SceneEditorPage() {
 
     setIsQuickActionPending(true);
     try {
+      const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null;
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
-      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+      const previousLastNode = selectedNode ?? (sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null);
 
       let newNode: SceneNodeOut;
       try {
@@ -379,8 +381,9 @@ export default function SceneEditorPage() {
     }
     setIsQuickActionPending(true);
     try {
+      const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null;
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
-      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+      const previousLastNode = selectedNode ?? (sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null);
 
       let newNode: SceneNodeOut;
       try {
@@ -628,7 +631,15 @@ export default function SceneEditorPage() {
         </ul>
       )}
       {view === "graph" && (
-        <SceneGraphView nodes={nodes} characters={characters} storyId={storyId} chapterId={chapterId} onNodesChanged={load} />
+        <SceneGraphView
+          nodes={nodes}
+          characters={characters}
+          storyId={storyId}
+          chapterId={chapterId}
+          onNodesChanged={load}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={setSelectedNodeId}
+        />
       )}
       {view === "characters" && (
         <CharactersSection

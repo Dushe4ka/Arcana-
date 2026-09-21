@@ -107,14 +107,17 @@ export function SceneGraphView({
   storyId,
   chapterId,
   onNodesChanged,
+  selectedNodeId,
+  onSelectNode,
 }: {
   nodes: SceneNodeOut[];
   characters: CharacterOut[];
   storyId: string;
   chapterId: string;
   onNodesChanged: () => void;
+  selectedNodeId: string | null;
+  onSelectNode: (id: string | null) => void;
 }) {
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
 
   const flowNodes = useMemo<Node<SceneNodeOut>[]>(
@@ -413,7 +416,7 @@ export function SceneGraphView({
           onNodesChange={onNodesChange}
           onNodeDragStop={onNodeDragStop}
           onNodeClick={(_, node) => {
-            setSelectedNodeId(node.id);
+            onSelectNode(node.id);
             setSelectedEdgeId(null);
           }}
           onConnect={onConnect}
@@ -463,7 +466,7 @@ export function SceneGraphView({
               >
                 ▶ Превью отсюда
               </Link>
-              <button onClick={() => setSelectedNodeId(null)} className="text-xs text-neutral-500 underline">
+              <button onClick={() => onSelectNode(null)} className="text-xs text-neutral-500 underline">
                 Закрыть
               </button>
             </div>
