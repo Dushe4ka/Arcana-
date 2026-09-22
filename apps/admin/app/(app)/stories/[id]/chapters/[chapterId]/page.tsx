@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { previewHref } from "@/lib/preview";
-import { NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
+import { DEFAULT_DATA_BY_TYPE, NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene-nodes";
 import { derivePoses } from "@/lib/sprites";
 import type { ChapterOut, CharacterOut, OutfitOut, SceneNodeOut, VariableDefinitionOut } from "@/lib/types";
+import { CharactersSection } from "@/components/CharactersSection";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
 import { SceneGraphView } from "@/components/SceneGraphView";
+import { VariableReferencesPanel } from "@/components/VariableReferencesPanel";
 
 // Task 3's read-side key (`play_service.py`/`preview_service.py` already look this variable up
 // as a speaker-name override, falling back to `Character.name`) - this file is the write side:
@@ -20,23 +22,64 @@ const DISPLAY_NAME_OVERRIDE_KEY = "display_name_override";
 
 export default function SceneEditorPage() {
   const { id: storyId, chapterId } = useParams<{ id: string; chapterId: string }>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [chapter, setChapter] = useState<ChapterOut | null>(null);
   const [nodes, setNodes] = useState<SceneNodeOut[]>([]);
   const [characters, setCharacters] = useState<CharacterOut[]>([]);
+  const [variableDefinitions, setVariableDefinitions] = useState<VariableDefinitionOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [view, setView] = useState<"list" | "graph">("list");
+  const [view, setView] = useState<"list" | "graph" | "characters" | "variables">("list");
+
+  // `?view=graph&node=<id>` on initial load - written by `VariableReferencesPanel`'s "Перейти"
+  // for a CROSS-chapter usage (a real navigation to this page), so a scenarist landing here from
+  // another chapter's Variables tab sees the right node already selected on the Граф tab.
+  // `searchParams` itself never changes after mount on this page (no in-page control edits the
+  // URL query string), so this effect only ever needs to run once, on mount - but it's kept
+  // keyed on `searchParams` anyway (rather than an empty array) since `useSearchParams` is the
+  // one Next.js-recommended way to read it and an exhaustive-deps lint would otherwise flag an
+  // empty array as stale.
+  useEffect(() => {
+    const requestedView = searchParams.get("view");
+    const requestedNode = searchParams.get("node");
+    if (requestedView === "graph") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time URL->state sync on mount, not a fetch
+      setView("graph");
+    }
+    if (requestedNode) {
+      setSelectedNodeId(requestedNode);
+    }
+  }, [searchParams]);
+
+  // Single "Перейти" entry point handed down to `VariableReferencesPanel` - see that
+  // component's own doc comment for why a prop-drilled callback was chosen over a
+  // `CustomEvent`. Same-chapter usage: just select+switch tabs locally, no navigation (so
+  // `SceneGraphView`'s own `selectedNodeId` effect - see that file - sees a genuinely new
+  // externally-set value and re-centers). Cross-chapter usage: a real Next.js navigation to the
+  // target chapter's page with `?view=graph&node=` - handled by the effect above once that page
+  // mounts.
+  const onNavigateToUsage = (targetChapterId: string, nodeId: string) => {
+    if (targetChapterId === chapterId) {
+      setView("graph");
+      setSelectedNodeId(nodeId);
+    } else {
+      router.push(`/stories/${storyId}/chapters/${targetChapterId}?view=graph&node=${nodeId}`);
+    }
+  };
 
   const load = async () => {
     try {
-      const [chapterData, nodesData, charactersData] = await Promise.all([
+      const [chapterData, nodesData, charactersData, variableDefinitionsData] = await Promise.all([
         apiRequest<ChapterOut>(`/admin/chapters/${chapterId}`),
         apiRequest<SceneNodeOut[]>(`/admin/scene-nodes?chapterId=${chapterId}`),
         apiRequest<CharacterOut[]>(`/admin/characters?storyId=${storyId}`),
+        apiRequest<VariableDefinitionOut[]>(`/admin/variables?storyId=${storyId}`),
       ]);
       setChapter(chapterData);
       setNodes(nodesData);
       setCharacters(charactersData);
+      setVariableDefinitions(variableDefinitionsData);
       setError(null);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось загрузить главу");
@@ -85,7 +128,8 @@ export default function SceneEditorPage() {
   // succeeds - e.g. some CHOICE options were left untouched because they already had a
   // destination - or `null` when there's nothing to report. A thrown `ApiError` still means the
   // chain itself failed (a PATCH request errored), which is a different, harder failure.
-  const chainNodeForward = async (node: SceneNodeOut, nextNodeId: string): Promise<string | null> => {
+  const chainNodeForward = async (node: SceneNodeOut, newNode: SceneNodeOut): Promise<string | null> => {
+    const nextNodeId = newNode.id;
     if (node.type === "CHOICE") {
       // Only route options that don't already point somewhere - PATCHing every option
       // unconditionally (as this used to) is correct for a freshly-built node (all options start
@@ -122,6 +166,30 @@ export default function SceneEditorPage() {
       }
       return null;
     }
+    if (node.type === "DIALOGUE" || node.type === "EFFECT") {
+      const existingNextNodeId = (node.data as { nextNodeId?: string | null }).nextNodeId ?? null;
+      if (existingNextNodeId) {
+        // Selecting a MID-CHAIN node (not just the chapter's last node) and quick-adding onto it
+        // is this plan's own documented workflow - unconditionally overwriting `nextNodeId` here
+        // would silently detach whatever this node already pointed at, orphaning it with no
+        // warning. When the new node itself has a single forward link to redirect onto
+        // (DIALOGUE/EFFECT), splice it in instead of just refusing: the new node inherits the old
+        // target, and only then does `node` get repointed at the new node - so nothing already
+        // authored is lost. A newly created CHOICE (from "Смена наряда") has no single
+        // `nextNodeId` of its own to redirect the old target onto - which branch should "continue
+        // the chain" is genuinely ambiguous - so that case falls back to the same
+        // never-silently-overwrite guard the CHOICE branch above already uses, and reports it via
+        // the same informational-note channel instead of touching either node.
+        if (newNode.type === "DIALOGUE" || newNode.type === "EFFECT") {
+          await apiRequest(`/admin/scene-nodes/${newNode.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ data: { ...newNode.data, nextNodeId: existingNextNodeId } }),
+          });
+        } else {
+          return "Предыдущий узел уже вёл к другому узлу — новый узел создан, но не вставлен в цепочку автоматически, проверьте порядок вручную";
+        }
+      }
+    }
     await apiRequest(`/admin/scene-nodes/${node.id}`, {
       method: "PATCH",
       body: JSON.stringify({ data: { ...node.data, nextNodeId } }),
@@ -140,13 +208,6 @@ export default function SceneEditorPage() {
   const nextOrder = (): number => Math.max(-1, ...nodes.map((n) => n.order)) + 1;
 
   const onCreateNode = async (type: SceneNodeOut["type"]) => {
-    const defaultDataByType: Record<SceneNodeOut["type"], object> = {
-      DIALOGUE: { text: { ru: "…" } },
-      CHOICE: {},
-      CONDITION: { when: [] },
-      EFFECT: { effects: [] },
-      END: {},
-    };
     try {
       await apiRequest("/admin/scene-nodes", {
         method: "POST",
@@ -154,7 +215,7 @@ export default function SceneEditorPage() {
           type,
           chapterId,
           order: nodes.length,
-          data: defaultDataByType[type],
+          data: type === "DIALOGUE" ? { text: { ru: "…" } } : DEFAULT_DATA_BY_TYPE[type],
         }),
       });
       load();
@@ -196,8 +257,9 @@ export default function SceneEditorPage() {
     if (isQuickActionPending) return;
     setIsQuickActionPending(true);
     try {
+      const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null;
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
-      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+      const previousLastNode = selectedNode ?? (sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null);
 
       const character = characterId ? characters.find((c) => c.id === characterId) ?? null : null;
       const staged = character
@@ -238,7 +300,7 @@ export default function SceneEditorPage() {
       }
 
       try {
-        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode) : null;
         setMutationError(note);
       } catch (err) {
         // The new node was already created and exists in the backend even though the PATCH
@@ -292,8 +354,9 @@ export default function SceneEditorPage() {
 
     setIsQuickActionPending(true);
     try {
+      const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null;
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
-      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+      const previousLastNode = selectedNode ?? (sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null);
 
       let newNode: SceneNodeOut;
       try {
@@ -349,7 +412,7 @@ export default function SceneEditorPage() {
       }
 
       try {
-        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode) : null;
         setMutationError(note);
       } catch (err) {
         // Same soft-failure shape as `onAddDialogue`: the EFFECT node itself was created, only the
@@ -382,8 +445,9 @@ export default function SceneEditorPage() {
     }
     setIsQuickActionPending(true);
     try {
+      const selectedNode = selectedNodeId ? nodes.find((n) => n.id === selectedNodeId) ?? null : null;
       const sortedNodes = nodes.slice().sort((a, b) => a.order - b.order);
-      const previousLastNode = sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null;
+      const previousLastNode = selectedNode ?? (sortedNodes.length > 0 ? sortedNodes[sortedNodes.length - 1] : null);
 
       let newNode: SceneNodeOut;
       try {
@@ -461,7 +525,7 @@ export default function SceneEditorPage() {
       }
 
       try {
-        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode) : null;
         setMutationError(note);
       } catch (err) {
         const reason = err instanceof ApiError ? err.message : null;
@@ -570,6 +634,18 @@ export default function SceneEditorPage() {
         >
           Граф
         </button>
+        <button
+          onClick={() => setView("characters")}
+          className={view === "characters" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Персонажи
+        </button>
+        <button
+          onClick={() => setView("variables")}
+          className={view === "variables" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Переменные
+        </button>
       </div>
 
       {view === "list" && (
@@ -625,7 +701,32 @@ export default function SceneEditorPage() {
         </ul>
       )}
       {view === "graph" && (
-        <SceneGraphView nodes={nodes} characters={characters} storyId={storyId} chapterId={chapterId} onNodesChanged={load} />
+        <SceneGraphView
+          nodes={nodes}
+          characters={characters}
+          storyId={storyId}
+          chapterId={chapterId}
+          entryNodeId={chapter.entryNodeId}
+          onNodesChanged={load}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={setSelectedNodeId}
+        />
+      )}
+      {view === "characters" && (
+        <CharactersSection
+          storyId={storyId}
+          characters={characters}
+          variableDefinitions={variableDefinitions}
+          onChanged={load}
+        />
+      )}
+      {view === "variables" && (
+        <VariableReferencesPanel
+          storyId={storyId}
+          currentChapterId={chapterId}
+          characters={characters}
+          onNavigate={onNavigateToUsage}
+        />
       )}
     </div>
   );

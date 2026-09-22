@@ -209,8 +209,13 @@ export function QuickAddToolbar({
  * separate "Отображаемое имя" field: a scenarist reaching for this popover mid-chapter is
  * adding a minor/incidental character to keep building dialogue, not doing a deliberate
  * "villain reveal" name split - that case can still be done via the full form on the story page.
+ *
+ * Exported (not module-private, unlike `RenamePopover`/`ChangeOutfitPopover` below) so
+ * `NodeTypeMenu.tsx`'s own "+ Новый персонаж" entry can reuse it directly instead of
+ * duplicating this form - the same compact create-character flow, just anchored under a
+ * different trigger.
  */
-function NewCharacterPopover({
+export function NewCharacterPopover({
   storyId,
   onClose,
   onCreated,

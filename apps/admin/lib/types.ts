@@ -69,6 +69,31 @@ export type VariableDefinitionOut = {
   maxValue: number | null;
 };
 
+/** One place a story variable is set (`role: "sets"`, e.g. an EFFECT node writing it, or a
+ * CHOICE option's own effects) or checked (`role: "reads"`, e.g. a CONDITION node's group, or a
+ * CHOICE option's `visibleWhen`) - mirrors `VariableUsageEntry` in
+ * `apps/api/app/schemas/responses.py` field-for-field (Task 1's endpoint). `nodeType` is
+ * whatever `SceneNodeOut.type` the usage lives on - kept as the same literal union as
+ * `SceneNodeOut["type"]` here even though the backend field is a plain `str`, matching this
+ * file's existing convention of narrowing backend `str` fields to their known literal values. */
+export type VariableUsageEntry = {
+  chapterId: string;
+  chapterTitle: LocalizedText;
+  seasonIndex: number;
+  chapterIndex: number;
+  nodeId: string;
+  nodeType: "DIALOGUE" | "CHOICE" | "CONDITION" | "EFFECT" | "END";
+  role: "sets" | "reads";
+};
+
+/** Response shape of `GET /admin/stories/{storyId}/variable-usages` - one entry per
+ * `VariableDefinition` in the story, each carrying every place it's used across every
+ * season/chapter. */
+export type VariableUsageOut = {
+  definition: VariableDefinitionOut;
+  usages: VariableUsageEntry[];
+};
+
 export type StoryDetailOut = StoryOut & {
   seasons: SeasonOut[];
   characters: CharacterOut[];

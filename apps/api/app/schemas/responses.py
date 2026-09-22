@@ -4,7 +4,7 @@ the real response shape for whoever builds the admin panel or mobile app against
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ConfigDict
 from pydantic.alias_generators import to_camel
@@ -83,6 +83,21 @@ class VariableDefinitionOut(ORMModel):
     character_id: uuid.UUID | None
     min_value: float | None
     max_value: float | None
+
+
+class VariableUsageEntry(CamelModel):
+    chapter_id: uuid.UUID
+    chapter_title: LocalizedText
+    season_index: int
+    chapter_index: int
+    node_id: uuid.UUID
+    node_type: str
+    role: Literal["sets", "reads"]
+
+
+class VariableUsageOut(CamelModel):
+    definition: VariableDefinitionOut
+    usages: list[VariableUsageEntry]
 
 
 class ChapterOut(ORMModel):
