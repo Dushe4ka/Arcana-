@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { apiRequest, ApiError } from "@/lib/api";
 import { NODE_TYPE_LABELS } from "@/lib/scene-nodes";
-import type { VariableUsageOut } from "@/lib/types";
+import type { CharacterOut, VariableUsageOut } from "@/lib/types";
 
 /**
  * "Переменные" tab: for every `VariableDefinition` in the story, lists every place it's set
@@ -22,10 +22,16 @@ import type { VariableUsageOut } from "@/lib/types";
 export function VariableReferencesPanel({
   storyId,
   currentChapterId,
+  characters,
   onNavigate,
 }: {
   storyId: string;
   currentChapterId: string;
+  /** Every variable this app auto-creates today (`display_name_override`, `outfit`) is
+   * character-scoped - without this, two different characters' identically-named/keyed
+   * variables render as visually indistinguishable duplicate cards. Already loaded by
+   * `page.tsx` for other purposes, just not previously threaded down here. */
+  characters: CharacterOut[];
   onNavigate: (chapterId: string, nodeId: string) => void;
 }) {
   const [usages, setUsages] = useState<VariableUsageOut[] | null>(null);
@@ -45,10 +51,22 @@ export function VariableReferencesPanel({
 
   return (
     <div className="space-y-4">
-      {usages.map(({ definition, usages: entries }) => (
+      {usages.map(({ definition, usages: entries }) => {
+        const scopedCharacter = definition.characterId
+          ? characters.find((c) => c.id === definition.characterId)
+          : null;
+        return (
         <div key={definition.id} className="rounded border border-neutral-200 bg-white p-4">
           <div className="flex items-center justify-between">
-            <span className="font-medium">{definition.label.ru}</span>
+            <span className="font-medium">
+              {definition.label.ru}
+              {/* Distinguishes two different characters' identically-named/keyed variables
+               * (e.g. both named "Обаяние") - a story-wide (non-character-scoped) variable
+               * shows no such label at all. */}
+              {scopedCharacter && (
+                <span className="ml-1 font-normal text-neutral-500">— {scopedCharacter.name.ru}</span>
+              )}
+            </span>
             <span className="text-xs text-neutral-500">{definition.key}</span>
           </div>
           {entries.length === 0 ? (
@@ -99,7 +117,8 @@ export function VariableReferencesPanel({
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

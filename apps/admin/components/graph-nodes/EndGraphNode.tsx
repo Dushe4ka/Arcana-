@@ -2,10 +2,9 @@
 
 import type { Node, NodeProps } from "@xyflow/react";
 
-import type { SceneNodeOut } from "@/lib/types";
-import { NodeCard } from "./shared";
+import { NodeCard, type GraphNodeData } from "./shared";
 
-export type EndFlowNode = Node<SceneNodeOut, "end">;
+export type EndFlowNode = Node<GraphNodeData, "end">;
 
 /** END is a terminal node - no outgoing handle at all (nothing to drag a connection from), but
  * still needs the default incoming handle (`NodeCard` already renders that unconditionally) so

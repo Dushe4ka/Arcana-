@@ -2,10 +2,9 @@
 
 import type { Node, NodeProps } from "@xyflow/react";
 
-import type { SceneNodeOut } from "@/lib/types";
-import { NodeCard, OutputHandleRow } from "./shared";
+import { NodeCard, OutputHandleRow, type GraphNodeData } from "./shared";
 
-export type ConditionFlowNode = Node<SceneNodeOut, "condition">;
+export type ConditionFlowNode = Node<GraphNodeData, "condition">;
 
 /** CONDITION always has exactly two outputs - `then`/`else` ("да"/"нет" in the scenarist's own
  * terms), matching `data.thenNodeId`/`data.elseNodeId`. Fixed count and order, unlike

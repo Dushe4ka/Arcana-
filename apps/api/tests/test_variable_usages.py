@@ -53,7 +53,7 @@ async def test_variable_usage_across_seasons(client, make_user, auth_headers, ma
         order=0,
         data={
             "when": [
-                {"variableKey": "spared_villain", "characterId": None, "operator": "EQUALS", "value": True}
+                {"variableKey": "spared_villain", "characterId": None, "operator": "EQ", "value": True}
             ],
             "thenNodeId": None,
             "elseNodeId": None,
@@ -68,7 +68,7 @@ async def test_variable_usage_across_seasons(client, make_user, auth_headers, ma
         order=0,
         text={"ru": "..."},
         visible_when=[
-            {"variableKey": "spared_villain", "characterId": None, "operator": "EQUALS", "value": True}
+            {"variableKey": "spared_villain", "characterId": None, "operator": "EQ", "value": True}
         ],
         effects=[],
         next_node_id=None,

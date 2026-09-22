@@ -63,8 +63,11 @@ async def list_usages(db: AsyncSession, story_id: str) -> list[dict]:
                 data = node.data or {}
                 if node.type.value == "EFFECT":
                     for effect in data.get("effects", []):
+                        variable_key = effect.get("variableKey")
+                        if not variable_key:
+                            continue
                         record(
-                            effect["variableKey"],
+                            variable_key,
                             effect.get("characterId"),
                             "sets",
                             chapter,
@@ -73,8 +76,11 @@ async def list_usages(db: AsyncSession, story_id: str) -> list[dict]:
                         )
                 elif node.type.value == "CONDITION":
                     for condition in data.get("when", []):
+                        variable_key = condition.get("variableKey")
+                        if not variable_key:
+                            continue
                         record(
-                            condition["variableKey"],
+                            variable_key,
                             condition.get("characterId"),
                             "reads",
                             chapter,
@@ -84,8 +90,11 @@ async def list_usages(db: AsyncSession, story_id: str) -> list[dict]:
                 elif node.type.value == "CHOICE":
                     for option in node.choice_options:
                         for condition in option.visible_when or []:
+                            variable_key = condition.get("variableKey")
+                            if not variable_key:
+                                continue
                             record(
-                                condition["variableKey"],
+                                variable_key,
                                 condition.get("characterId"),
                                 "reads",
                                 chapter,
@@ -93,8 +102,11 @@ async def list_usages(db: AsyncSession, story_id: str) -> list[dict]:
                                 node,
                             )
                         for effect in option.effects or []:
+                            variable_key = effect.get("variableKey")
+                            if not variable_key:
+                                continue
                             record(
-                                effect["variableKey"],
+                                variable_key,
                                 effect.get("characterId"),
                                 "sets",
                                 chapter,

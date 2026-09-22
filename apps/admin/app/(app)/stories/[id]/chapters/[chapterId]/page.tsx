@@ -128,7 +128,8 @@ export default function SceneEditorPage() {
   // succeeds - e.g. some CHOICE options were left untouched because they already had a
   // destination - or `null` when there's nothing to report. A thrown `ApiError` still means the
   // chain itself failed (a PATCH request errored), which is a different, harder failure.
-  const chainNodeForward = async (node: SceneNodeOut, nextNodeId: string): Promise<string | null> => {
+  const chainNodeForward = async (node: SceneNodeOut, newNode: SceneNodeOut): Promise<string | null> => {
+    const nextNodeId = newNode.id;
     if (node.type === "CHOICE") {
       // Only route options that don't already point somewhere - PATCHing every option
       // unconditionally (as this used to) is correct for a freshly-built node (all options start
@@ -164,6 +165,30 @@ export default function SceneEditorPage() {
         return `Подключено ${unroutedOptions.length} из ${node.choiceOptions.length} вариантов — остальные ${alreadyRoutedCount} уже вели на другой узел и не были изменены`;
       }
       return null;
+    }
+    if (node.type === "DIALOGUE" || node.type === "EFFECT") {
+      const existingNextNodeId = (node.data as { nextNodeId?: string | null }).nextNodeId ?? null;
+      if (existingNextNodeId) {
+        // Selecting a MID-CHAIN node (not just the chapter's last node) and quick-adding onto it
+        // is this plan's own documented workflow - unconditionally overwriting `nextNodeId` here
+        // would silently detach whatever this node already pointed at, orphaning it with no
+        // warning. When the new node itself has a single forward link to redirect onto
+        // (DIALOGUE/EFFECT), splice it in instead of just refusing: the new node inherits the old
+        // target, and only then does `node` get repointed at the new node - so nothing already
+        // authored is lost. A newly created CHOICE (from "Смена наряда") has no single
+        // `nextNodeId` of its own to redirect the old target onto - which branch should "continue
+        // the chain" is genuinely ambiguous - so that case falls back to the same
+        // never-silently-overwrite guard the CHOICE branch above already uses, and reports it via
+        // the same informational-note channel instead of touching either node.
+        if (newNode.type === "DIALOGUE" || newNode.type === "EFFECT") {
+          await apiRequest(`/admin/scene-nodes/${newNode.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ data: { ...newNode.data, nextNodeId: existingNextNodeId } }),
+          });
+        } else {
+          return "Предыдущий узел уже вёл к другому узлу — новый узел создан, но не вставлен в цепочку автоматически, проверьте порядок вручную";
+        }
+      }
     }
     await apiRequest(`/admin/scene-nodes/${node.id}`, {
       method: "PATCH",
@@ -275,7 +300,7 @@ export default function SceneEditorPage() {
       }
 
       try {
-        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode) : null;
         setMutationError(note);
       } catch (err) {
         // The new node was already created and exists in the backend even though the PATCH
@@ -387,7 +412,7 @@ export default function SceneEditorPage() {
       }
 
       try {
-        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode) : null;
         setMutationError(note);
       } catch (err) {
         // Same soft-failure shape as `onAddDialogue`: the EFFECT node itself was created, only the
@@ -500,7 +525,7 @@ export default function SceneEditorPage() {
       }
 
       try {
-        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode.id) : null;
+        const note = previousLastNode ? await chainNodeForward(previousLastNode, newNode) : null;
         setMutationError(note);
       } catch (err) {
         const reason = err instanceof ApiError ? err.message : null;
@@ -699,6 +724,7 @@ export default function SceneEditorPage() {
         <VariableReferencesPanel
           storyId={storyId}
           currentChapterId={chapterId}
+          characters={characters}
           onNavigate={onNavigateToUsage}
         />
       )}

@@ -2,10 +2,9 @@
 
 import type { Node, NodeProps } from "@xyflow/react";
 
-import type { SceneNodeOut } from "@/lib/types";
-import { NodeCard, OutputHandleRow } from "./shared";
+import { NodeCard, OutputHandleRow, type GraphNodeData } from "./shared";
 
-export type ChoiceFlowNode = Node<SceneNodeOut, "choice">;
+export type ChoiceFlowNode = Node<GraphNodeData, "choice">;
 
 /** CHOICE has one output handle per `ChoiceOption` (already available as `node.choiceOptions` on
  * the `SceneNodeOut` passed as `data` - no separate fetch needed), each one addressed by that

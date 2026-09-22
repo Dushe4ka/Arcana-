@@ -94,7 +94,17 @@ export function NodeTypeMenu({
       // which sits inside that same viewport element. Without this override every button
       // below is inert to a real mouse click - the click hit-tests straight through to the
       // canvas pane underneath instead of this menu (confirmed live via a Task 8 walkthrough).
-      className="pointer-events-auto absolute z-20 w-56 rounded border border-neutral-300 bg-white p-3 shadow-lg"
+      //
+      // `nodrag nopan nowheel` (the same React Flow opt-out classes `DeletableEdge`'s delete
+      // button already uses) are just as necessary: this menu still sits inside React Flow's own
+      // d3-zoom pane, which otherwise (a) turns a press-and-drag anywhere on the menu into a
+      // canvas pan instead of a menu interaction, and (b) can have d3-zoom's own click-suppression
+      // swallow a button click outright if the pointer drifts even slightly during the click
+      // (React Flow's `paneClickDistance` defaults to 0) - which looks like the exact same "menu
+      // button does nothing" symptom `pointer-events-auto` above was added to fix. `select-text`
+      // undoes `.react-flow__viewport-portal`'s own `user-select: none`, so text inputs nested in
+      // here (e.g. `NewCharacterPopover`'s name field) can be selected normally.
+      className="nodrag nopan nowheel pointer-events-auto absolute z-20 w-56 select-text rounded border border-neutral-300 bg-white p-3 shadow-lg"
       style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
     >
       <p className="mb-2 text-xs font-medium text-neutral-500">Новый узел</p>

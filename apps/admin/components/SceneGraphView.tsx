@@ -26,6 +26,7 @@ import {
   currentStagedLookAt,
   DEFAULT_DATA_BY_TYPE,
   NODE_TYPE_LABELS,
+  resolveStagedSpriteUrl,
   storyModeLabel,
 } from "@/lib/scene-nodes";
 import type { CharacterOut, SceneNodeOut } from "@/lib/types";
@@ -160,8 +161,7 @@ export function SceneGraphView({
             : null;
           if (speaker) {
             const lookAt = currentStagedLookAt(sceneNodes, entryNodeId, n.id);
-            const spriteKey = lookAt[speaker.id]?.sprite;
-            storyThumbnailUrl = spriteKey ? (speaker.sprites[spriteKey] ?? null) : null;
+            storyThumbnailUrl = resolveStagedSpriteUrl(speaker.sprites, lookAt[speaker.id]);
           }
         }
         return {
@@ -326,9 +326,16 @@ export function SceneGraphView({
   useEffect(() => {
     if (!selectedNodeId || !reactFlowInstance) return;
     if (autoCenteredNodeIds.current.has(selectedNodeId)) return;
-    autoCenteredNodeIds.current.add(selectedNodeId);
     const node = localNodes.find((n) => n.id === selectedNodeId);
+    // Deliberately NOT marked "handled" until a real node is actually found - on a cross-chapter
+    // "Перейти" navigation this effect can first run against the PREVIOUS chapter's still-stale
+    // `localNodes` (before the new chapter's data has loaded), where the lookup fails. Marking
+    // the id as centered on that failed attempt would make the effect skip it forever once the
+    // correct nodes actually load a moment later - the node would end up selected (the editor
+    // panel opens fine, driven by `selectedNodeId` alone) but the canvas would never pan/zoom to
+    // it. Leaving the id unmarked lets this effect retry on the next `localNodes` change instead.
     if (!node) return;
+    autoCenteredNodeIds.current.add(selectedNodeId);
     // `NodeCard`'s fixed 200px width (graph-nodes/shared.tsx) - offsetting by half of it centers
     // closer to the node's visual middle than its top-left corner (`node.position`). Height
     // varies by node content (no fixed value to offset by), so this doesn't attempt a matching
@@ -357,6 +364,18 @@ export function SceneGraphView({
     handleId: string | null;
   } | null>(null);
 
+  // Set at the end of `onConnectEnd`'s empty-space-drop branch, cleared at the very start of
+  // `onPaneClick` - guards against a real mouse drag-to-empty-space gesture. On a genuine mouse
+  // drag (mousedown on a handle, mousemove to empty canvas, mouseup), the browser dispatches a
+  // trailing native `click` event at the pane (the common ancestor of the handle's `mousedown`
+  // and the pane's `mouseup`, since `.react-flow__viewport` has `pointer-events: none`) right
+  // after `onConnectEnd` fires - which would otherwise hit `onPaneClick`'s own
+  // `setPendingConnectionSource(null)` and clear the pending source before the menu even renders,
+  // silently creating an UNCONNECTED node instead of wiring it to the drag's source. Not a ref
+  // for its render value (nothing reads it in JSX) - just a same-tick flag `onPaneClick` can
+  // check synchronously without waiting on a state update.
+  const connectionJustEndedRef = useRef(false);
+
   const onConnectEnd = useCallback(
     (event: MouseEvent | TouchEvent, connectionState: FinalConnectionState) => {
       // `isValid: true` means the drag landed on a real target handle - `onConnect` already
@@ -374,6 +393,7 @@ export function SceneGraphView({
       if (connectionState.fromHandle.type !== "source") return;
       const point = "changedTouches" in event ? event.changedTouches[0] : event;
       if (!point) return;
+      connectionJustEndedRef.current = true;
       setPendingConnectionSource({
         nodeId: connectionState.fromHandle.nodeId,
         handleId: connectionState.fromHandle.id ?? null,
@@ -533,6 +553,15 @@ export function SceneGraphView({
               setSelectedEdgeId((prev) => (prev === edge.id ? null : edge.id))
             }
             onPaneClick={(event) => {
+              // See `connectionJustEndedRef`'s own comment above - a real mouse drag-to-empty-
+              // space fires this trailing native click right after `onConnectEnd` already set up
+              // the pending-connection menu. Bail out immediately, leaving that state exactly as
+              // `onConnectEnd` set it, instead of running this handler's own pane-click behavior
+              // (which would clear `pendingConnectionSource` and re-open the menu unconnected).
+              if (connectionJustEndedRef.current) {
+                connectionJustEndedRef.current = false;
+                return;
+              }
               setSelectedEdgeId(null);
               if (!reactFlowInstance) return;
               setPendingConnectionSource(null);
