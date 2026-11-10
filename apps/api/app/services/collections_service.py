@@ -5,7 +5,7 @@ title or image."""
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.content import Chapter, SceneNode, Season, Story
+from app.models.content import Chapter, PublishedNode, Season, Story
 from app.models.enums import ContentStatus, SceneNodeType
 from app.models.player import PlayerCgUnlock, PlayerChapterCompletion, PlayerEndingUnlock, SaveSlot
 
@@ -43,22 +43,27 @@ async def get_collections(db: AsyncSession, user_id: str) -> list[dict]:
     result = []
     for story in stories:
         published = (
-            select(SceneNode, Chapter.index, Season.index, Chapter.id)
-            .join(Chapter, SceneNode.chapter_id == Chapter.id)
+            # Only what players can actually read: the live publication of published chapters.
+            select(PublishedNode, Chapter.index, Season.index, Chapter.id)
+            .join(Chapter, PublishedNode.chapter_id == Chapter.id)
             .join(Season, Chapter.season_id == Season.id)
-            .where(Season.story_id == story.id, Chapter.status == ContentStatus.PUBLISHED)
+            .where(
+                Season.story_id == story.id,
+                Chapter.status == ContentStatus.PUBLISHED,
+                PublishedNode.version == Chapter.published_version,
+            )
         )
-        ending_rows = (await db.execute(published.where(SceneNode.type == SceneNodeType.END))).all()
+        ending_rows = (await db.execute(published.where(PublishedNode.type == SceneNodeType.END))).all()
         endings = []
         for node, chapter_index, season_index, _ in sorted(ending_rows, key=lambda r: (r[2], r[1])):
             data = node.data or {}
             title = data.get("endingTitle") or data.get("ending_title")
             if not title:
                 continue  # an untitled END is just "the chapter is over", not a collectible
-            unlocked = str(node.id) in reached
+            unlocked = str(node.node_id) in reached
             endings.append(
                 {
-                    "nodeId": str(node.id),
+                    "nodeId": str(node.node_id),
                     "seasonIndex": season_index,
                     "chapterIndex": chapter_index,
                     "unlocked": unlocked,
@@ -67,10 +72,10 @@ async def get_collections(db: AsyncSession, user_id: str) -> list[dict]:
             )
 
         cg_filter = or_(
-            SceneNode.data["cgImageUrl"].astext != "", SceneNode.data["cg_image_url"].astext != ""
+            PublishedNode.data["cgImageUrl"].astext != "", PublishedNode.data["cg_image_url"].astext != ""
         )
         cg_nodes = (
-            await db.execute(published.where(SceneNode.type == SceneNodeType.DIALOGUE, cg_filter))
+            await db.execute(published.where(PublishedNode.type == SceneNodeType.DIALOGUE, cg_filter))
         ).all()
         all_cgs = {url for node, *_ in cg_nodes if (url := _cg_url(node.data))}
         unlocked_cgs = [url for url in seen_cgs.get(str(story.id), []) if url in all_cgs]

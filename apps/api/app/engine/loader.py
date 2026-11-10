@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.engine.condition_engine import variable_lookup_key
 from app.engine.runtime import NodeSpec, OptionSpec, StoryGraph, VariableSpec, parse_node_data
-from app.models.content import Character, ChoiceOption, SceneNode, VariableDefinition
+from app.models.content import Chapter, Character, ChoiceOption, PublishedNode, SceneNode, VariableDefinition
 from app.schemas.common import Condition, Effect
 
 
@@ -108,6 +108,49 @@ async def extend_with_nodes(db: AsyncSession, graph: StoryGraph, node_ids: list[
         return False
     add_nodes(graph, nodes)
     return bool(nodes)
+
+
+async def extend_with_published_nodes(db: AsyncSession, graph: StoryGraph, node_ids: list[str]) -> bool:
+    """Like `extend_with_nodes`, but reads the frozen copies players are meant to see: for
+    each node, the version its chapter currently has live. Draft edits are invisible here."""
+    wanted = [n for n in node_ids if n and n not in graph.nodes and n not in graph.broken]
+    if not wanted:
+        return True
+    try:
+        rows = list(
+            await db.scalars(
+                select(PublishedNode)
+                .join(Chapter, Chapter.id == PublishedNode.chapter_id)
+                .where(PublishedNode.node_id.in_(wanted), PublishedNode.version == Chapter.published_version)
+            )
+        )
+    except Exception:  # noqa: BLE001 - a malformed uuid stored as a jump target
+        return False
+    for row in rows:
+        node_id = str(row.node_id)
+        node_type = getattr(row.type, "value", row.type)
+        try:
+            options = tuple(
+                OptionSpec(
+                    id=str(o["id"]),
+                    order=o.get("order", 0),
+                    text=o["text"],
+                    cost_currency=o.get("costCurrency") or None,
+                    cost_amount=o.get("costAmount") or 0,
+                    visible_when=tuple(Condition.model_validate(c) for c in o.get("visibleWhen") or []),
+                    effects=tuple(Effect.model_validate(e) for e in o.get("effects") or []),
+                    next_node_id=o.get("nextNodeId"),
+                )
+                for o in row.options or []
+            )
+            data = parse_node_data(node_type, row.data)
+        except Exception as exc:  # noqa: BLE001 - see add_nodes
+            graph.broken[node_id] = str(exc)
+            continue
+        graph.nodes[node_id] = NodeSpec(
+            id=node_id, chapter_id=str(row.chapter_id), type=node_type, data=data, options=options
+        )
+    return bool(rows)
 
 
 def successors(graph: StoryGraph, node_id: str) -> list[str]:

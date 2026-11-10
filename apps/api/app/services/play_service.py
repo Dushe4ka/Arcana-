@@ -31,7 +31,7 @@ from sqlalchemy.orm import selectinload
 
 from app.engine import loader, runtime, views
 from app.engine.runtime import EngineError, EngineState, RestPoint, StoryGraph
-from app.models.content import Chapter, ChoiceOption, SceneNode, Season, Story
+from app.models.content import Chapter, ChapterPublication, PublishedNode, Season, Story
 from app.models.enums import ContentStatus, TransactionType
 from app.models.player import (
     PlayerCgUnlock,
@@ -57,7 +57,7 @@ _ERROR_STATUS = {
 def _http_error(exc: EngineError) -> HTTPException:
     return HTTPException(
         _ERROR_STATUS.get(exc.code, status.HTTP_400_BAD_REQUEST),
-        {"message": exc.message, "code": exc.code},
+        {"message": exc.message, "code": exc.code, "nodeId": exc.node_id},
     )
 
 
@@ -75,7 +75,7 @@ async def start_chapter(
     restart: bool = False,
     role: str = "PLAYER",
 ) -> dict:
-    chapter = await _get_playable_chapter(db, chapter_id, role)
+    chapter, entry_node_id = await _get_playable_chapter(db, chapter_id, role)
     story_id = chapter.season.story_id
 
     await _ensure_chapter_unlocked(db, user_id, chapter)
@@ -118,7 +118,7 @@ async def start_chapter(
             box.set_chapter_start(chapter.id, state)
         box.clear_progress()
 
-    rest = await _run(db, graph, state, str(chapter.entry_node_id))
+    rest = await _run(db, graph, state, entry_node_id)
     outcome = await _arrive(db, user_id, slot, box, rest)
     await db.commit()
     return await _view(db, user_id, slot, graph, rest, box, outcome)
@@ -222,17 +222,8 @@ async def get_history(db: AsyncSession, user_id: str, save_slot_id: str) -> list
     slot = await _get_owned_slot(db, user_id, save_slot_id)
     path = _StateBox(slot.state).path
     node_ids = {entry["n"] for entry in path}
-    option_ids = {entry["o"] for entry in path if entry.get("o")}
-    nodes = (
-        {str(n.id): n for n in await db.scalars(select(SceneNode).where(SceneNode.id.in_(node_ids)))}
-        if node_ids
-        else {}
-    )
-    options = (
-        {str(o.id): o for o in await db.scalars(select(ChoiceOption).where(ChoiceOption.id.in_(option_ids)))}
-        if option_ids
-        else {}
-    )
+    nodes = {str(n.node_id): n for n in await _published_nodes(db, node_ids)} if node_ids else {}
+    options = {str(o["id"]): o for n in nodes.values() for o in n.options or []}
     characters = await loader.load_characters(db, slot.story_id)
 
     log = []
@@ -243,9 +234,9 @@ async def get_history(db: AsyncSession, user_id: str, save_slot_id: str) -> list
         if entry.get("o"):
             option = options.get(entry["o"])
             if option is not None:
-                log.append({"type": "CHOICE", "nodeId": entry["n"], "text": option.text})
+                log.append({"type": "CHOICE", "nodeId": entry["n"], "text": option["text"]})
             continue
-        if node.type.value != "DIALOGUE":
+        if getattr(node.type, "value", node.type) != "DIALOGUE":
             continue
         data = node.data or {}
         speaker_id = data.get("speakerCharacterId") or data.get("speaker_character_id")
@@ -357,9 +348,11 @@ async def _run(db: AsyncSession, graph: StoryGraph, state: EngineState, node_id:
             return runtime.run_until_rest(graph, state, node_id)
         except EngineError as exc:
             if exc.code == "MISSING_NODE" and exc.node_id and exc.node_id not in graph.broken:
-                if await loader.extend_with_nodes(db, graph, [exc.node_id]):
+                if await loader.extend_with_published_nodes(db, graph, [exc.node_id]):
                     if exc.node_id in graph.nodes:
-                        await loader.extend_with_nodes(db, graph, loader.successors(graph, exc.node_id))
+                        await loader.extend_with_published_nodes(
+                            db, graph, loader.successors(graph, exc.node_id)
+                        )
                         continue
             raise _http_error(exc) from exc
     raise HTTPException(status.HTTP_400_BAD_REQUEST, "Слишком длинная цепочка автоматических переходов")
@@ -371,8 +364,35 @@ async def _open(db: AsyncSession, slot: SaveSlot) -> tuple[StoryGraph, _StateBox
         raise HTTPException(status.HTTP_404_NOT_FOUND, "У этого сохранения нет текущей сцены")
     graph = StoryGraph(nodes={}, variables=await loader.load_variables(db, slot.story_id))
     box = _StateBox(slot.state)
-    here = await _run(db, graph, box.engine_state(), str(slot.current_node_id))
+    try:
+        here = await _run(db, graph, box.engine_state(), str(slot.current_node_id))
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, dict) else {}
+        if detail.get("code") != "MISSING_NODE" or detail.get("nodeId") != str(slot.current_node_id):
+            raise
+        here = await _recover(db, slot, graph, box)
     return graph, box, here
+
+
+async def _recover(db: AsyncSession, slot: SaveSlot, graph: StoryGraph, box: _StateBox) -> RestPoint:
+    """The beat this save was standing on no longer exists in the live version of the
+    chapter (it was removed in a newer publication). Rather than a dead save, put the player
+    on the most recent beat of their own history that still exists - with the variables they
+    had there - or, failing that, at the start of the chapter with their current variables."""
+    while (snapshot := box.pop_history()) is not None:
+        try:
+            rest = await _run(db, graph, EngineState.from_json(snapshot), snapshot["nodeId"])
+        except HTTPException:
+            continue
+        box.pop_path_to(snapshot["nodeId"])
+        return rest
+
+    chapter = await db.get(Chapter, slot.chapter_id) if slot.chapter_id else None
+    publication = await _live_publication(db, chapter) if chapter else None
+    if publication is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Эта глава больше недоступна")
+    box.clear_progress()
+    return await _run(db, graph, _carry_over(box.engine_state()), str(publication.entry_node_id))
 
 
 async def _current_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
@@ -524,7 +544,7 @@ async def _next_chapter(db: AsyncSession, user_id: str, chapter_id: str) -> dict
             .where(
                 Season.story_id == chapter.season.story_id,
                 Chapter.status == ContentStatus.PUBLISHED,
-                Chapter.entry_node_id.is_not(None),
+                Chapter.published_version.is_not(None),
             )
             .options(selectinload(Chapter.season))
         )
@@ -567,21 +587,51 @@ def _to_save_slot_dto(slot: SaveSlot, *, can_rollback: bool = False) -> dict:
 # ---------------------------------------------------------------------------------------
 
 
-async def _get_playable_chapter(db: AsyncSession, chapter_id: str, role: str) -> Chapter:
-    chapter = await db.scalar(
-        select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
+async def _live_publication(db: AsyncSession, chapter: Chapter) -> ChapterPublication | None:
+    if chapter.published_version is None:
+        return None
+    return await db.scalar(
+        select(ChapterPublication).where(
+            ChapterPublication.chapter_id == chapter.id,
+            ChapterPublication.version == chapter.published_version,
+        )
     )
+
+
+async def _published_nodes(db: AsyncSession, node_ids) -> list[PublishedNode]:
+    """The live copies of the given nodes (whatever version each one's chapter has live)."""
+    return list(
+        await db.scalars(
+            select(PublishedNode)
+            .join(Chapter, Chapter.id == PublishedNode.chapter_id)
+            .where(
+                PublishedNode.node_id.in_(list(node_ids)), PublishedNode.version == Chapter.published_version
+            )
+        )
+    )
+
+
+async def _get_playable_chapter(db: AsyncSession, chapter_id: str, role: str) -> tuple[Chapter, str]:
+    """Returns the chapter and the entry node of the version players currently read."""
+    not_found = HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
+    try:
+        chapter = await db.scalar(
+            select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
+        )
+    except Exception as exc:  # noqa: BLE001 - malformed uuid in the URL
+        raise not_found from exc
     if not chapter or chapter.status != ContentStatus.PUBLISHED:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
+        raise not_found
     story = await db.get(Story, chapter.season.story_id)
     is_staff = role in STAFF_ROLES
     if story is None or (story.is_test and not is_staff):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
+        raise not_found
     if story.status != ContentStatus.PUBLISHED and not is_staff:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
-    if not chapter.entry_node_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У главы не задана начальная сцена")
-    return chapter
+        raise not_found
+    publication = await _live_publication(db, chapter)
+    if publication is None:
+        raise not_found
+    return chapter, str(publication.entry_node_id)
 
 
 async def _ensure_chapter_unlocked(db: AsyncSession, user_id: str, chapter: Chapter) -> None:
@@ -639,8 +689,8 @@ async def _create_slot(db: AsyncSession, user_id: str, story_id, slot_index: int
 async def _is_at_end(db: AsyncSession, slot: SaveSlot) -> bool:
     if not slot.current_node_id:
         return True
-    node_type = await db.scalar(select(SceneNode.type).where(SceneNode.id == slot.current_node_id))
-    return node_type is None or node_type.value == "END"
+    nodes = await _published_nodes(db, [slot.current_node_id])
+    return not nodes or getattr(nodes[0].type, "value", nodes[0].type) == "END"
 
 
 async def _is_earlier_chapter(db: AsyncSession, target: Chapter, current_chapter_id) -> bool:

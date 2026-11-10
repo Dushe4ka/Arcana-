@@ -12,7 +12,7 @@ from app.schemas.content import (
     StoryCreateInput,
     StoryUpdateInput,
 )
-from app.services import qa_service
+from app.services import publications_service, qa_service
 
 # --- Stories ---------------------------------------------------------------------------
 
@@ -171,7 +171,9 @@ async def update_chapter(db: AsyncSession, chapter_id: str, data: ChapterUpdateI
     return chapter
 
 
-async def set_chapter_status(db: AsyncSession, chapter_id: str, new_status: ContentStatus) -> Chapter:
+async def set_chapter_status(
+    db: AsyncSession, chapter_id: str, new_status: ContentStatus, published_by: str | None = None
+) -> Chapter:
     chapter = await _require_chapter(db, chapter_id)
     if new_status == ContentStatus.PUBLISHED:
         if not chapter.entry_node_id:
@@ -182,6 +184,9 @@ async def set_chapter_status(db: AsyncSession, chapter_id: str, new_status: Cont
         # Narrative QA gate: a chapter with broken links, dead ends or soft locks never
         # reaches players.
         await qa_service.require_publishable(db, chapter_id)
+        # Freeze what was just checked: players read this copy, not the editable nodes.
+        # Publishing an already published chapter simply releases its latest edits.
+        await publications_service.snapshot(db, chapter, published_by)
     chapter.status = new_status
     await db.commit()
     await db.refresh(chapter)

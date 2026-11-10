@@ -13,7 +13,7 @@ from app.models.content import Chapter, ChoiceOption, SceneNode, Season, Story
 from app.models.economy import CurrencyTransaction, DailyRewardState, Wallet
 from app.models.player import PlayerChapterUnlock
 from app.models.user import User
-from app.services import play_service, wallet_service
+from app.services import play_service, publications_service, wallet_service
 
 
 async def _seed(factory, *, unlock_cost=0):
@@ -38,6 +38,8 @@ async def _seed(factory, *, unlock_cost=0):
         )
         db.add(option)
         chapter.entry_node_id = choice.id
+        await db.flush()
+        await publications_service.snapshot(db, chapter)
         await db.commit()
         return str(user.id), str(chapter.id), str(option.id), str(choice.id)
 

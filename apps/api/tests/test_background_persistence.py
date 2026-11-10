@@ -1,3 +1,6 @@
+from app.services import publications_service
+
+
 async def test_background_persists_from_previous_dialogue_node_when_unset(
     client, make_user, auth_headers, make_chapter, db_session
 ):
@@ -30,6 +33,8 @@ async def test_background_persists_from_previous_dialogue_node_when_unset(
     await db_session.refresh(first_node)
 
     chapter.entry_node_id = first_node.id
+    await db_session.flush()
+    await publications_service.snapshot(db_session, chapter)
     await db_session.flush()
 
     player = await make_user("reader-bg@example.com", role="PLAYER")

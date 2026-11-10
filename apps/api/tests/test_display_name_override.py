@@ -1,6 +1,7 @@
 from app.engine.condition_engine import variable_lookup_key
 from app.models.content import Character, SceneNode, VariableDefinition
 from app.models.player import SaveSlot
+from app.services import publications_service
 
 
 async def test_rename_does_not_bleed_into_dialogue_before_the_effect_node(
@@ -84,6 +85,8 @@ async def test_rename_does_not_bleed_into_dialogue_before_the_effect_node(
     await db_session.flush()
     await db_session.refresh(first_dialogue)
     chapter.entry_node_id = first_dialogue.id
+    await db_session.flush()
+    await publications_service.snapshot(db_session, chapter)
     await db_session.commit()
 
     player = await make_user("reader-rename-bleed@example.com", role="PLAYER")
@@ -133,6 +136,8 @@ async def test_speaker_name_falls_back_to_character_name_with_no_override(
     await db_session.refresh(node)
     chapter.entry_node_id = node.id
     await db_session.flush()
+    await publications_service.snapshot(db_session, chapter)
+    await db_session.flush()
 
     player = await make_user("reader-no-override@example.com", role="PLAYER")
 
@@ -167,6 +172,8 @@ async def test_speaker_name_uses_display_name_override_when_set(
     await db_session.flush()
     await db_session.refresh(node)
     chapter.entry_node_id = node.id
+    await db_session.flush()
+    await publications_service.snapshot(db_session, chapter)
     await db_session.flush()
 
     player = await make_user("reader-override@example.com", role="PLAYER")
@@ -226,6 +233,8 @@ async def test_preview_speaker_name_uses_display_name_override_when_set(
     await db_session.flush()
     await db_session.refresh(node)
     chapter.entry_node_id = node.id
+    await db_session.flush()
+    await publications_service.snapshot(db_session, chapter)
     await db_session.flush()
 
     writer = await make_user("writer-override@example.com", role="WRITER")

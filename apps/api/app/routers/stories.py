@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile, status
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.deps import require_roles
+from app.core.deps import AuthenticatedUser, get_current_user, require_roles
 from app.database import get_db
 from app.models.enums import ContentStatus
 from app.schemas.base import CamelModel
@@ -21,7 +21,13 @@ from app.schemas.responses import (
     StoryOut,
     VariableUsageOut,
 )
-from app.services import import_service, qa_service, stories_service, variable_usage_service
+from app.services import (
+    import_service,
+    publications_service,
+    qa_service,
+    stories_service,
+    variable_usage_service,
+)
 
 # Content-authoring endpoints for the admin panel. Every route here requires a
 # WRITER/EDITOR/ADMIN account - players never touch this router.
@@ -110,8 +116,29 @@ async def update_chapter(chapter_id: str, body: ChapterUpdateInput, db: AsyncSes
 
 
 @router.post("/chapters/{chapter_id}/publish", response_model=ChapterOut)
-async def publish_chapter(chapter_id: str, db: AsyncSession = Depends(get_db)):
-    return await stories_service.set_chapter_status(db, chapter_id, ContentStatus.PUBLISHED)
+async def publish_chapter(
+    chapter_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Runs narrative QA and, if it passes, releases the chapter's current state to players
+    as a new version. Call it again later to release further edits."""
+    return await stories_service.set_chapter_status(db, chapter_id, ContentStatus.PUBLISHED, user.user_id)
+
+
+@router.get("/chapters/{chapter_id}/publications")
+async def chapter_publications(chapter_id: str, db: AsyncSession = Depends(get_db)):
+    """Published versions of a chapter and whether the draft has changes players do not see yet."""
+    return await publications_service.overview(db, chapter_id)
+
+
+@router.post(
+    "/chapters/{chapter_id}/publications/{version}/activate",
+    dependencies=[Depends(require_roles("EDITOR", "ADMIN"))],
+)
+async def activate_publication(chapter_id: str, version: int, db: AsyncSession = Depends(get_db)):
+    """Rollback: makes an earlier published version the one players read."""
+    return await publications_service.activate(db, chapter_id, version)
 
 
 @router.post("/chapters/{chapter_id}/unpublish", response_model=ChapterOut)

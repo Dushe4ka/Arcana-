@@ -50,8 +50,13 @@ class StoryBuilder:
         return definition
 
     async def entry(self, node, chapter=None):
-        (chapter or self.chapter).entry_node_id = node.id
+        """Sets the entry scene and publishes: call it last, once the graph is wired."""
+        from app.services import publications_service
+
+        chapter = chapter or self.chapter
+        chapter.entry_node_id = node.id
         await self.db.flush()
+        await publications_service.snapshot(self.db, chapter)
 
 
 @pytest.fixture

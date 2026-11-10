@@ -12,6 +12,7 @@ import type { ChapterOut, CharacterOut, OutfitOut, SceneNodeOut, VariableDefinit
 import { CharactersSection } from "@/components/CharactersSection";
 import { NarrativeQaPanel } from "@/components/NarrativeQaPanel";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
+import { PublicationBar } from "@/components/PublicationBar";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
 import { SceneGraphView } from "@/components/SceneGraphView";
 import { ScriptImportPanel } from "@/components/ScriptImportPanel";
@@ -597,6 +598,8 @@ export default function SceneEditorPage() {
           </span>
         )}
       </div>
+
+      <PublicationBar chapterId={chapterId} refreshKey={nodes} onChanged={load} onQaFailed={() => setView("qa")} />
 
       {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
 

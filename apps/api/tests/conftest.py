@@ -207,3 +207,16 @@ async def make_character(db_session: AsyncSession):
         return character
 
     return _make_character
+
+
+@pytest_asyncio.fixture
+async def publish(db_session: AsyncSession):
+    """Freezes a chapter's current nodes into the publication players read - what the admin
+    panel's "Опубликовать" does, minus the QA gate (tests build deliberately broken graphs)."""
+    from app.services import publications_service
+
+    async def _publish(chapter: Chapter):
+        await db_session.flush()
+        return await publications_service.snapshot(db_session, chapter)
+
+    return _publish

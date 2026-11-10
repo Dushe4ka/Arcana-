@@ -2,9 +2,11 @@
 
 from app.models.content import (  # noqa: F401
     Chapter,
+    ChapterPublication,
     Character,
     ChoiceOption,
     Outfit,
+    PublishedNode,
     SceneNode,
     Season,
     Story,

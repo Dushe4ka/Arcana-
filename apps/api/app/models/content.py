@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,7 +14,7 @@ from app.models.enums import (
     StoryGenre,
     VariableType,
 )
-from app.models.mixins import TimestampMixin, UUIDPKMixin
+from app.models.mixins import TimestampMixin, UUIDPKMixin, _utcnow
 
 
 class Story(Base, UUIDPKMixin, TimestampMixin):
@@ -74,6 +75,10 @@ class Chapter(Base, UUIDPKMixin, TimestampMixin):
         unique=True,
     )
 
+    # Which frozen publication (see ChapterPublication) players currently read. Null = never
+    # published. Editing nodes never changes what players see until a new publication is made.
+    published_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     season: Mapped[Season] = relationship(back_populates="chapters")
     entry_node: Mapped["SceneNode | None"] = relationship(foreign_keys=[entry_node_id], post_update=True)
     nodes: Mapped[list["SceneNode"]] = relationship(
@@ -121,6 +126,45 @@ class ChoiceOption(Base, UUIDPKMixin, TimestampMixin):
     next_node_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     node: Mapped[SceneNode] = relationship(back_populates="choice_options")
+
+
+class ChapterPublication(Base, UUIDPKMixin):
+    """One published version of a chapter: an immutable copy of its scene graph taken at
+    publish time (rows in `published_nodes`). Players always read a publication, never the
+    editable nodes - so a writer can rework a live chapter safely, and a bad release can be
+    rolled back by re-activating an earlier version."""
+
+    __tablename__ = "chapter_publications"
+    __table_args__ = (UniqueConstraint("chapter_id", "version"),)
+
+    chapter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chapters.id", ondelete="CASCADE"), index=True
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    entry_node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    node_count: Mapped[int] = mapped_column(Integer, default=0)
+    published_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class PublishedNode(Base, UUIDPKMixin):
+    """A scene node as it was at publish time, with its choice options embedded. `node_id`
+    is the id of the editable node it was copied from (ids are stable across versions, so
+    saves keep pointing at the right beat after a republish)."""
+
+    __tablename__ = "published_nodes"
+    __table_args__ = (UniqueConstraint("chapter_id", "version", "node_id"),)
+
+    chapter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chapters.id", ondelete="CASCADE")
+    )
+    version: Mapped[int] = mapped_column(Integer)
+    node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    type: Mapped[SceneNodeType] = mapped_column()
+    data: Mapped[dict] = mapped_column(JSONB)
+    options: Mapped[list] = mapped_column(JSONB, default=list)
 
 
 class Character(Base, UUIDPKMixin, TimestampMixin):

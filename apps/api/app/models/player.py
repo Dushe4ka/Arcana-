@@ -73,9 +73,9 @@ class PlayerChoiceUnlock(Base, UUIDPKMixin):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
-    choice_option_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("choice_options.id", ondelete="CASCADE")
-    )
+    # Deliberately not a foreign key: the option may later be deleted from the editable
+    # draft while it is still live in a published version - the purchase must survive that.
+    choice_option_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     unlocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
@@ -111,9 +111,8 @@ class PlayerEndingUnlock(Base, UUIDPKMixin):
     chapter_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("chapters.id", ondelete="CASCADE")
     )
-    node_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("scene_nodes.id", ondelete="CASCADE")
-    )
+    # Not a foreign key, for the same reason as PlayerChoiceUnlock.choice_option_id.
+    node_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
     ending_key: Mapped[str | None] = mapped_column(String, nullable=True)
     unlocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 

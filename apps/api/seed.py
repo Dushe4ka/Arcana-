@@ -26,6 +26,7 @@ from app.models.economy import DailyRewardState, Wallet
 from app.models.enums import ContentStatus, SceneNodeType, StoryGenre
 from app.models.player import SaveSlot
 from app.models.user import PlayerProfile, User
+from app.services import publications_service
 
 PLACEHOLDER_BG_NIGHT = "https://picsum.photos/seed/arcana-night-hall/1200/800"
 PLACEHOLDER_BG_STREET = "https://picsum.photos/seed/arcana-street/1200/800"
@@ -396,6 +397,9 @@ async def seed_chapter_one(db, season_id, dante, lia, iris, confidence, rel_dant
     )
 
     chapter.entry_node_id = n1.id
+    await db.flush()
+    # Players read a frozen publication of the chapter, not the editable nodes.
+    await publications_service.snapshot(db, chapter)
     await db.commit()
 
 
@@ -501,6 +505,9 @@ async def seed_chapter_two(db, season_id, dante, lia, rel_dante):
     n4.data = {**n4.data, "nextNodeId": str(n5.id)}
 
     chapter.entry_node_id = n1.id
+    await db.flush()
+    # Players read a frozen publication of the chapter, not the editable nodes.
+    await publications_service.snapshot(db, chapter)
     await db.commit()
 
 

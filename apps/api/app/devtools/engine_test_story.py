@@ -17,6 +17,7 @@ from app.config import settings
 from app.devtools import placeholder_assets as art
 from app.models.content import Chapter, Character, ChoiceOption, SceneNode, Season, Story, VariableDefinition
 from app.models.enums import ContentStatus, StoryGenre
+from app.services import publications_service
 
 SLUG = "arcana-engine-test"
 _NS = uuid.uuid5(uuid.NAMESPACE_URL, "https://arcana.app/engine-test")
@@ -333,6 +334,9 @@ async def seed_engine_test_story(db) -> Story:
     two.entry_node_id = carry_gate
     one.status = ContentStatus.PUBLISHED
     two.status = ContentStatus.PUBLISHED
+    await db.flush()
+    for chapter in (one, two):
+        await publications_service.snapshot(db, chapter)
     await db.commit()
     return story
 
