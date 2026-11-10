@@ -40,7 +40,7 @@ export function PreviewPlayer({
     try {
       const data = await apiRequest<PreviewStepOut>(`/admin/preview/chapters/${chapterId}`, {
         method: "POST",
-        body: JSON.stringify({ nodeId: startNodeId, backgroundUrl: null, values: {} }),
+        body: JSON.stringify({ nodeId: startNodeId, backgroundUrl: null, stage: null, values: {} }),
       });
       setHistory([data]);
     } catch (err) {
@@ -67,6 +67,7 @@ export function PreviewPlayer({
         body: JSON.stringify({
           nodeId: current.view.nextNodeId,
           backgroundUrl: current.backgroundUrl,
+          stage: current.stage,
           values: current.values,
         }),
       });
@@ -92,6 +93,7 @@ export function PreviewPlayer({
           nodeId: current.view.nodeId,
           choiceOptionId,
           backgroundUrl: current.backgroundUrl,
+          stage: current.stage,
           values: current.values,
         }),
       });

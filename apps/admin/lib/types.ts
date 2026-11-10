@@ -15,6 +15,8 @@ export type StoryOut = {
   coverImageUrl: string | null;
   status: ContentStatus;
   genre: StoryGenre;
+  /** Technical/QA story - never listed for players, only staff can open it in the app. */
+  isTest: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -171,8 +173,51 @@ export type PreviewEndView = {
 
 export type PreviewNodeView = PreviewDialogueView | PreviewChoiceView | PreviewEndView;
 
+/** Persistent stage state the engine carries from beat to beat (music keeps playing, the
+ * background stays) plus this beat's one-shot cues. Mirrors app/engine/views.py. */
+export type StageView = {
+  backgroundUrl: string | null;
+  music: { url: string; loop: boolean; volume: number } | null;
+  atmosphere: string | null;
+  camera: { zoom: number; focus: "left" | "center" | "right" } | null;
+  cgUrl: string | null;
+  sfxUrl?: string;
+  screenEffect?: string;
+  transition?: string;
+  musicFadeMs?: number;
+  cameraDurationMs?: number;
+};
+
 export type PreviewStepOut = {
   view: PreviewNodeView;
   backgroundUrl: string | null;
+  stage: StageView;
   values: Record<string, number | boolean | string>;
+};
+
+export type QaIssue = {
+  severity: "error" | "warning" | "info";
+  code: string;
+  message: string;
+  nodeId: string | null;
+  optionId: string | null;
+};
+
+/** Narrative QA report for one chapter - app/engine/narrative_qa.py. */
+export type QaReport = {
+  publishable: boolean;
+  errorCount: number;
+  warningCount: number;
+  issues: QaIssue[];
+  stats: {
+    nodes?: number;
+    reachableNodes?: number;
+    choices?: number;
+    endings?: number;
+    exploredStates?: number;
+    explorationComplete?: boolean;
+    visitedNodes?: number;
+    coveragePercent?: number;
+    reachableEndings?: number;
+  };
 };

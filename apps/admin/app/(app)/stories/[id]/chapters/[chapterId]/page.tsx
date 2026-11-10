@@ -10,6 +10,7 @@ import { DEFAULT_DATA_BY_TYPE, NODE_TYPE_LABELS, nodeSummary } from "@/lib/scene
 import { derivePoses } from "@/lib/sprites";
 import type { ChapterOut, CharacterOut, OutfitOut, SceneNodeOut, VariableDefinitionOut } from "@/lib/types";
 import { CharactersSection } from "@/components/CharactersSection";
+import { NarrativeQaPanel } from "@/components/NarrativeQaPanel";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
 import { SceneGraphView } from "@/components/SceneGraphView";
@@ -30,7 +31,7 @@ export default function SceneEditorPage() {
   const [variableDefinitions, setVariableDefinitions] = useState<VariableDefinitionOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [view, setView] = useState<"list" | "graph" | "characters" | "variables">("list");
+  const [view, setView] = useState<"list" | "graph" | "characters" | "variables" | "qa">("list");
 
   // `?view=graph&node=<id>` on initial load - written by `VariableReferencesPanel`'s "Перейти"
   // for a CROSS-chapter usage (a real navigation to this page), so a scenarist landing here from
@@ -646,6 +647,12 @@ export default function SceneEditorPage() {
         >
           Переменные
         </button>
+        <button
+          onClick={() => setView("qa")}
+          className={view === "qa" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Проверка сюжета
+        </button>
       </div>
 
       {view === "list" && (
@@ -718,6 +725,16 @@ export default function SceneEditorPage() {
           characters={characters}
           variableDefinitions={variableDefinitions}
           onChanged={load}
+        />
+      )}
+      {view === "qa" && (
+        <NarrativeQaPanel
+          chapterId={chapterId}
+          nodes={nodes}
+          onNavigate={(nodeId) => {
+            setView("graph");
+            setSelectedNodeId(nodeId);
+          }}
         />
       )}
       {view === "variables" && (
