@@ -70,7 +70,20 @@ export default function ReadingScreen() {
   /** Applies everything a freshly received view asks of the stage: music, one-shot
    * sound/screen effects and camera framing. */
   const present = useCallback(
-    (next: PlayView, { quiet = false }: { quiet?: boolean } = {}) => {
+    (received: PlayView, { quiet = false }: { quiet?: boolean } = {}) => {
+      // An API older than this app build sends no stage block; treat that as an empty stage
+      // (background only) instead of crashing mid-story.
+      const next = {
+        ...received,
+        stage: received.stage ?? {
+          backgroundUrl: (received as { backgroundImageUrl?: string | null }).backgroundImageUrl ?? null,
+          music: null,
+          atmosphere: null,
+          camera: null,
+          cgUrl: null,
+        },
+        saveSlot: { ...received.saveSlot, canRollback: received.saveSlot.canRollback ?? false },
+      } as PlayView;
       viewRef.current = next;
       setView(next);
       const stage = next.stage;
