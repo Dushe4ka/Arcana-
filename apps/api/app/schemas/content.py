@@ -1,7 +1,7 @@
 import re
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.schemas.base import CamelModel
 from app.schemas.common import ConditionGroup, CurrencyCode, EffectList, LocalizedText
@@ -22,6 +22,7 @@ class StoryCreateInput(CamelModel):
     description: LocalizedText | None = None
     cover_image_url: str | None = None
     genre: STORY_GENRES
+    is_test: bool = False
 
     @field_validator("slug")
     @classmethod
@@ -37,6 +38,7 @@ class StoryUpdateInput(CamelModel):
     description: LocalizedText | None = None
     cover_image_url: str | None = None
     genre: STORY_GENRES | None = None
+    is_test: bool | None = None
     status: Literal["DRAFT", "PUBLISHED", "ARCHIVED"] | None = None
 
 
@@ -121,12 +123,47 @@ class VariableDefinitionCreateInput(CamelModel):
 # --- Scene nodes ---------------------------------------------------------------------------
 
 
+SpriteAnimation = Literal["none", "fade_in", "slide_in", "bounce", "shake", "nod", "lean_in"]
+ScreenEffect = Literal["shake", "flash", "heartbeat", "blur_in"]
+Atmosphere = Literal["none", "rain", "snow", "fog", "dust", "sparkles", "petals"]
+SceneTransition = Literal["none", "fade", "dissolve", "slide"]
+
+
 class StagedCharacter(CamelModel):
     """One character standing on stage during a dialogue beat."""
 
     character_id: str
     sprite: str = "neutral"
     position: Literal["left", "center", "right"] = "center"
+    # One-shot entrance/reaction animation played when this beat is shown. Purely
+    # presentational - never affects story state.
+    animation: SpriteAnimation | None = None
+
+
+class MusicCue(CamelModel):
+    """Background music direction. `play` keeps looping across later beats until another cue
+    replaces or stops it (same persistence rule as backgrounds); `stop` fades it out."""
+
+    action: Literal["play", "stop"] = "play"
+    url: str | None = None
+    loop: bool = True
+    volume: float = Field(default=1.0, ge=0, le=1)
+    fade_ms: int = Field(default=800, ge=0, le=10000)
+
+    @model_validator(mode="after")
+    def _play_needs_url(self):
+        if self.action == "play" and not self.url:
+            raise ValueError("Для запуска музыки нужно выбрать трек")
+        return self
+
+
+class CameraCue(CamelModel):
+    """Camera framing that persists until the next cue. zoom=1 and focus=center is the
+    neutral framing."""
+
+    zoom: float = Field(default=1.0, ge=1.0, le=2.0)
+    focus: Literal["left", "center", "right"] = "center"
+    duration_ms: int = Field(default=900, ge=0, le=10000)
 
 
 class DialogueNodeData(CamelModel):
@@ -137,10 +174,25 @@ class DialogueNodeData(CamelModel):
     background_image_url: str | None = None
     staged: list[StagedCharacter] = Field(default_factory=list)
     next_node_id: str | None = None
+    # --- Stage directions. All optional; an absent field means "keep whatever is already
+    # on stage", so authors only set them on the beat where something changes. ---
+    music: MusicCue | None = None
+    sfx_url: str | None = None
+    # Full-screen illustration shown instead of sprites. None = keep, "" = hide.
+    cg_image_url: str | None = None
+    # Persistent weather/particles layer. None = keep, "none" = clear.
+    atmosphere: Atmosphere | None = None
+    camera: CameraCue | None = None
+    screen_effect: ScreenEffect | None = None
+    transition: SceneTransition | None = None
 
 
 class ChoiceNodeData(CamelModel):
     prompt: LocalizedText | None = None
+    # Optional countdown: when it runs out the client submits `timeout_option_id` (which must
+    # be a free, unconditional option of this node - enforced by narrative QA).
+    timer_seconds: int | None = Field(default=None, ge=3, le=120)
+    timeout_option_id: str | None = None
 
 
 class ConditionNodeData(CamelModel):
@@ -157,6 +209,11 @@ class EffectNodeData(CamelModel):
 class EndNodeData(CamelModel):
     # Marks the chapter complete and optionally unlocks the next chapter (reserved for future use).
     unlocks_next_chapter: bool = True
+    # Stable key + title for endings a story wants to track ("multiple endings" collection).
+    ending_key: str | None = Field(default=None, max_length=60)
+    ending_title: LocalizedText | None = None
+    # Soft-currency reward granted the first time this chapter is completed (never on replays).
+    reward_soft: int = Field(default=0, ge=0, le=100000)
 
 
 class DialogueNodeCreate(CamelModel):

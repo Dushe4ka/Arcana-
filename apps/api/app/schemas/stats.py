@@ -2,7 +2,7 @@
 
 Response shapes for the player cabinet's stats tab - a read-only view over
 VariableDefinition/PlayerVariableValue, unrelated to the condition/effect engine's own
-internal representation (see app/services/variables_service.py for that one).
+internal representation (see app/engine/runtime.py for that one).
 """
 
 from app.schemas.base import CamelModel

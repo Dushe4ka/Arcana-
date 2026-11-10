@@ -26,6 +26,9 @@ class Story(Base, UUIDPKMixin, TimestampMixin):
     status: Mapped[ContentStatus] = mapped_column(default=ContentStatus.DRAFT)
     # Single primary genre - drives which library shelf a story appears on in the app.
     genre: Mapped[StoryGenre] = mapped_column(default=StoryGenre.ROMANCE)
+    # Technical/QA stories (e.g. "ARCANA ENGINE TEST"): never listed for players, even when
+    # published - only staff accounts see and can play them.
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     seasons: Mapped[list["Season"]] = relationship(back_populates="story", cascade="all, delete-orphan")
     characters: Mapped[list["Character"]] = relationship(back_populates="story", cascade="all, delete-orphan")

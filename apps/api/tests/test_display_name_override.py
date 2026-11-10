@@ -1,5 +1,6 @@
+from app.engine.condition_engine import variable_lookup_key
 from app.models.content import Character, SceneNode, VariableDefinition
-from app.models.player import PlayerVariableValue
+from app.models.player import SaveSlot
 
 
 async def test_rename_does_not_bleed_into_dialogue_before_the_effect_node(
@@ -181,8 +182,16 @@ async def test_speaker_name_uses_display_name_override_when_set(
     db_session.add(variable_def)
     await db_session.flush()
 
+    # An existing playthrough in which the character was already renamed.
     db_session.add(
-        PlayerVariableValue(user_id=player.id, variable_definition_id=variable_def.id, value="Витя")
+        SaveSlot(
+            user_id=player.id,
+            story_id=story_id,
+            slot_index=1,
+            chapter_id=chapter.id,
+            current_node_id=node.id,
+            state={"values": {variable_lookup_key("display_name_override", str(character.id)): "Витя"}},
+        )
     )
     await db_session.commit()
 

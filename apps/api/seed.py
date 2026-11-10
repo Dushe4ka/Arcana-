@@ -11,6 +11,7 @@ from sqlalchemy import delete, select
 
 from app.core.security import hash_password
 from app.database import SessionLocal
+from app.engine.condition_engine import variable_lookup_key
 from app.models.content import (
     Chapter,
     Character,
@@ -22,7 +23,7 @@ from app.models.content import (
 )
 from app.models.economy import DailyRewardState, Wallet
 from app.models.enums import ContentStatus, SceneNodeType, StoryGenre
-from app.models.player import PlayerVariableValue, SaveSlot
+from app.models.player import SaveSlot
 from app.models.user import PlayerProfile, User
 
 PLACEHOLDER_BG_NIGHT = "https://picsum.photos/seed/arcana-night-hall/1200/800"
@@ -536,17 +537,6 @@ async def seed_cabinet_demo(db):
         .limit(1)
     )
 
-    # Rebuild the save slot from scratch (cascade may have removed the old one).
-    await db.execute(delete(SaveSlot).where(SaveSlot.user_id == user.id, SaveSlot.story_id == story.id))
-    db.add(
-        SaveSlot(
-            user_id=user.id,
-            story_id=story.id,
-            slot_index=1,
-            chapter_id=first_chapter.id if first_chapter else None,
-        )
-    )
-
     defs = list(await db.scalars(select(VariableDefinition).where(VariableDefinition.story_id == story.id)))
     demo_values = {}
     for d in defs:
@@ -555,13 +545,23 @@ async def seed_cabinet_demo(db):
             name_ru = (character.name or {}).get("ru", "") if character else ""
             # Demo-only heuristic: picks a "further along with Dante" progress state by
             # matching the seeded character name. Breaks if that character is renamed.
-            demo_values[d.id] = 40 if "Данте" in name_ru else 15
+            demo_values[variable_lookup_key(d.key, str(d.character_id))] = 40 if "Данте" in name_ru else 15
         elif d.key == "confidence":
-            demo_values[d.id] = 3
+            demo_values[variable_lookup_key(d.key)] = 3
 
-    await db.execute(delete(PlayerVariableValue).where(PlayerVariableValue.user_id == user.id))
-    for def_id, value in demo_values.items():
-        db.add(PlayerVariableValue(user_id=user.id, variable_definition_id=def_id, value=value))
+    # Rebuild the save slot from scratch (cascade may have removed the old one). Variables
+    # live in the slot's own engine state - each slot is an independent playthrough.
+    await db.execute(delete(SaveSlot).where(SaveSlot.user_id == user.id, SaveSlot.story_id == story.id))
+    db.add(
+        SaveSlot(
+            user_id=user.id,
+            story_id=story.id,
+            slot_index=1,
+            chapter_id=first_chapter.id if first_chapter else None,
+            current_node_id=first_chapter.entry_node_id if first_chapter else None,
+            state={"v": 1, "values": demo_values},
+        )
+    )
 
     await db.commit()
     print(f"Cabinet demo player ready: {email} / Player123!")

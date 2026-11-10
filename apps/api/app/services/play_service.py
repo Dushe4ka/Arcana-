@@ -1,26 +1,64 @@
+"""The live reader: persistence and economy around the pure narrative runtime.
+
+Every player action (start / advance / choice / rollback / restart) follows the same shape:
+
+1. lock the save slot row, so two requests for one playthrough run strictly one after another;
+2. run the deterministic runtime (app/engine/runtime.py) in memory;
+3. write the new slot state, wallet changes, entitlements and rewards;
+4. commit exactly once.
+
+If anything fails, nothing is written - a player is never charged for a choice that did not
+move the story forward, and never moves forward without being charged.
+
+Slot state (`SaveSlot.state`, JSONB):
+
+    {
+      "v": 1,
+      "values": {"<variable lookup key>": value},   # only explicitly changed variables
+      "stage": {"backgroundUrl", "music", "atmosphere", "camera", "cgUrl"},
+      "history": [{"nodeId", "chapterId", "values", "stage"}],   # rollback snapshots
+      "path": [{"n": nodeId} | {"n": nodeId, "o": optionId}],    # visited beats, for the log
+      "chapterStarts": {"<chapterId>": {"values", "stage"}}       # for restart / replay
+    }
+"""
+
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.engine.condition_engine import evaluate_condition_group, variable_lookup_key
-from app.models.content import Chapter, Character, ChoiceOption, SceneNode
-from app.models.player import PlayerChapterUnlock, SaveSlot
-from app.schemas.common import Condition, Effect
-from app.schemas.content import (
-    ChoiceNodeData,
-    ConditionNodeData,
-    DialogueNodeData,
-    EffectNodeData,
+from app.engine import loader, runtime, views
+from app.engine.runtime import EngineError, EngineState, RestPoint, StoryGraph
+from app.models.content import Chapter, ChoiceOption, SceneNode, Season, Story
+from app.models.enums import ContentStatus, TransactionType
+from app.models.player import (
+    PlayerChapterCompletion,
+    PlayerChapterUnlock,
+    PlayerChoiceUnlock,
+    PlayerEndingUnlock,
+    SaveSlot,
 )
-from app.services import variables_service, wallet_service
-from app.services.variables_service import VariableContext
+from app.services import wallet_service
 
-MAX_AUTO_TRAVERSAL_STEPS = 100
-# v1: flat award every time a chapter's END node is reached, including replays - no
-# per-chapter completion tracking yet, so this can be farmed by replaying a finished
-# chapter. Acceptable known limitation for now; revisit once that matters.
+STAFF_ROLES = {"WRITER", "EDITOR", "ADMIN"}
 CHAPTER_COMPLETE_XP = 50
+MAX_HISTORY = 30
+MAX_PATH = 300
+_MAX_CHAPTER_HOPS = 4
+
+_ERROR_STATUS = {
+    "MISSING_NODE": status.HTTP_404_NOT_FOUND,
+    "OPTION_HIDDEN": status.HTTP_403_FORBIDDEN,
+}
+
+
+def _http_error(exc: EngineError) -> HTTPException:
+    return HTTPException(
+        _ERROR_STATUS.get(exc.code, status.HTTP_400_BAD_REQUEST),
+        {"message": exc.message, "code": exc.code},
+    )
 
 
 # ---------------------------------------------------------------------------------------
@@ -28,325 +66,595 @@ CHAPTER_COMPLETE_XP = 50
 # ---------------------------------------------------------------------------------------
 
 
-async def start_chapter(db: AsyncSession, user_id: str, chapter_id: str, slot_index: int) -> dict:
-    chapter = await db.scalar(
-        select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
-    )
-    if not chapter or chapter.status.value != "PUBLISHED":
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
-    if not chapter.entry_node_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У главы не задана начальная сцена")
+async def start_chapter(
+    db: AsyncSession,
+    user_id: str,
+    chapter_id: str,
+    slot_index: int,
+    *,
+    restart: bool = False,
+    role: str = "PLAYER",
+) -> dict:
+    chapter = await _get_playable_chapter(db, chapter_id, role)
+    story_id = chapter.season.story_id
 
-    story_id = str(chapter.season.story_id)
-
-    existing_unlock = await db.scalar(
-        select(PlayerChapterUnlock).where(
-            PlayerChapterUnlock.user_id == user_id,
-            PlayerChapterUnlock.chapter_id == chapter_id,
-        )
-    )
-    if not existing_unlock:
-        if chapter.unlock_cost > 0:
-            await wallet_service.spend_energy(db, user_id, chapter.unlock_cost)
-        db.add(PlayerChapterUnlock(user_id=user_id, chapter_id=chapter_id))
-        await db.commit()
+    await _ensure_chapter_unlocked(db, user_id, chapter)
 
     slot = await db.scalar(
-        select(SaveSlot).where(
+        select(SaveSlot)
+        .where(
             SaveSlot.user_id == user_id,
             SaveSlot.story_id == story_id,
             SaveSlot.slot_index == slot_index,
         )
+        .with_for_update()
     )
-    if not slot:
-        slot = SaveSlot(
-            user_id=user_id,
-            story_id=story_id,
-            slot_index=slot_index,
-            chapter_id=chapter_id,
-            current_node_id=chapter.entry_node_id,
-        )
-        db.add(slot)
+    graph = await loader.load_chapter_graph(db, story_id, chapter.id)
+
+    if slot is None:
+        slot = await _create_slot(db, user_id, story_id, slot_index)
+    box = _StateBox(slot.state)
+
+    if slot.chapter_id is None and not box.history and not slot.current_node_id:
+        state = EngineState()
+        box.set_chapter_start(chapter.id, state)
+    else:
+        same_chapter = str(slot.chapter_id) == str(chapter.id)
+        if same_chapter and not restart and not await _is_at_end(db, slot):
+            # Plain resume: pick up exactly where this playthrough stopped.
+            view = await _current_view(db, user_id, slot)
+            await db.commit()
+            return view
+
+        saved_start = box.chapter_start(chapter.id)
+        going_back = same_chapter or restart or await _is_earlier_chapter(db, chapter, slot.chapter_id)
+        if going_back and saved_start is not None:
+            # Restart / replay of an earlier chapter: restore the variables it began with.
+            state = saved_start
+        else:
+            # Moving forward (or a save from before snapshots existed): variables carry
+            # over, the stage starts clean.
+            state = _carry_over(box.engine_state())
+            box.set_chapter_start(chapter.id, state)
+        box.clear_progress()
+
+    rest = await _run(db, graph, state, str(chapter.entry_node_id))
+    outcome = await _arrive(db, user_id, slot, box, rest)
+    await db.commit()
+    return await _view(db, user_id, slot, graph, rest, box, outcome)
+
+
+async def advance(
+    db: AsyncSession, user_id: str, save_slot_id: str, expected_node_id: str | None = None
+) -> dict:
+    slot = await _get_owned_slot(db, user_id, save_slot_id, lock=True)
+    graph, box, here = await _open(db, slot)
+
+    if _is_stale(slot, expected_node_id):
+        # A retry of a request that already went through - answer with where we are now.
         await db.commit()
-        await db.refresh(slot)
-    elif str(slot.chapter_id) != str(chapter_id):
-        slot.chapter_id = chapter_id
-        slot.current_node_id = chapter.entry_node_id
-        await db.commit()
+        return await _view(db, user_id, slot, graph, here, box)
 
-    return await _resolve_view(db, user_id, slot)
-
-
-async def advance(db: AsyncSession, user_id: str, save_slot_id: str) -> dict:
-    slot = await _get_owned_slot(db, user_id, save_slot_id)
-    node = await _get_node(db, slot.current_node_id)
-
-    if node.type.value != "DIALOGUE":
+    if here.node.type != "DIALOGUE":
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "В этой сцене нужно сделать выбор, а не просто продолжить",
+            status.HTTP_400_BAD_REQUEST, "В этой сцене нужно сделать выбор, а не просто продолжить"
         )
-    data = DialogueNodeData.model_validate(node.data)
-    if not data.next_node_id:
+    if not here.node.data.next_node_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "У этой сцены нет продолжения")
 
-    slot.current_node_id = data.next_node_id
+    box.push_history(here)
+    rest = await _run(db, graph, here.state, here.node.data.next_node_id)
+    outcome = await _arrive(db, user_id, slot, box, rest)
     await db.commit()
-    return await _resolve_view(db, user_id, slot)
+    return await _view(db, user_id, slot, graph, rest, box, outcome)
 
 
-async def submit_choice(db: AsyncSession, user_id: str, save_slot_id: str, choice_option_id: str) -> dict:
+async def submit_choice(
+    db: AsyncSession,
+    user_id: str,
+    save_slot_id: str,
+    choice_option_id: str,
+    expected_node_id: str | None = None,
+) -> dict:
+    slot = await _get_owned_slot(db, user_id, save_slot_id, lock=True)
+    graph, box, here = await _open(db, slot)
+
+    if _is_stale(slot, expected_node_id):
+        await db.commit()
+        return await _view(db, user_id, slot, graph, here, box)
+
+    try:
+        option, state_after = runtime.take_option(graph, here.state, here.node, choice_option_id)
+    except EngineError as exc:
+        raise _http_error(exc) from exc
+
+    # Run the story forward BEFORE charging: a broken continuation aborts with nothing spent.
+    rest = await _run(db, graph, state_after, option.next_node_id)
+
+    if option.is_paid:
+        await _charge_once(db, user_id, option)
+
+    box.push_history(here)
+    box.push_path(here.node.id, option.id)
+    outcome = await _arrive(db, user_id, slot, box, rest)
+    await db.commit()
+    return await _view(db, user_id, slot, graph, rest, box, outcome)
+
+
+async def restart_chapter(db: AsyncSession, user_id: str, save_slot_id: str, role: str = "PLAYER") -> dict:
+    """Restarts the slot's current chapter from its first scene with the variables it
+    originally started with."""
     slot = await _get_owned_slot(db, user_id, save_slot_id)
-    node = await _get_node(db, slot.current_node_id)
+    if not slot.chapter_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "В этом сохранении нет начатой главы")
+    return await start_chapter(db, user_id, str(slot.chapter_id), slot.slot_index, restart=True, role=role)
 
-    if node.type.value != "CHOICE":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "В текущей сцене нет вариантов выбора")
 
-    option = await db.get(ChoiceOption, choice_option_id)
-    if not option or str(option.node_id) != str(node.id):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Этот вариант недоступен в текущей сцене")
+async def rollback(db: AsyncSession, user_id: str, save_slot_id: str) -> dict:
+    """Steps one beat back, restoring variables and the stage exactly as they were. Purchases
+    and completion rewards are account-level facts and are deliberately NOT undone - the
+    player simply keeps the entitlement, so replaying the same paid choice is free."""
+    slot = await _get_owned_slot(db, user_id, save_slot_id, lock=True)
+    box = _StateBox(slot.state)
+    snapshot = box.pop_history()
+    if snapshot is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Дальше назад вернуться нельзя")
 
-    context = await variables_service.load_context(db, user_id, str(slot.story_id))
-
-    visible_when = [Condition.model_validate(c) for c in option.visible_when]
-    if not evaluate_condition_group(visible_when, context.as_value_map()):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Этот вариант выбора сейчас недоступен")
-
-    if option.cost_currency and option.cost_amount > 0:
-        await wallet_service.spend_currency(
-            db,
-            user_id,
-            option.cost_currency.value,
-            option.cost_amount,
-            f"choice:{option.id}",
-        )
-
-    effects = [Effect.model_validate(e) for e in option.effects]
-    await variables_service.apply_effects(db, user_id, str(slot.story_id), effects)
-
-    if not option.next_node_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У этого варианта не задано продолжение сюжета")
-
-    slot.current_node_id = option.next_node_id
+    slot.current_node_id = snapshot["nodeId"]
+    if snapshot.get("chapterId"):
+        slot.chapter_id = snapshot["chapterId"]
+    box.set_engine_state(EngineState.from_json(snapshot))
+    box.pop_path_to(snapshot["nodeId"])
+    _save(slot, box)
     await db.commit()
-    return await _resolve_view(db, user_id, slot)
+    return await _current_view(db, user_id, slot)
 
 
 async def get_current_view(db: AsyncSession, user_id: str, save_slot_id: str) -> dict:
+    slot = await _get_owned_slot(db, user_id, save_slot_id, lock=True)
+    view = await _current_view(db, user_id, slot)
+    await db.commit()
+    return view
+
+
+async def get_history(db: AsyncSession, user_id: str, save_slot_id: str) -> list[dict]:
+    """The dialogue log: every beat this playthrough went through, oldest first."""
     slot = await _get_owned_slot(db, user_id, save_slot_id)
-    return await _resolve_view(db, user_id, slot)
+    path = _StateBox(slot.state).path
+    node_ids = {entry["n"] for entry in path}
+    option_ids = {entry["o"] for entry in path if entry.get("o")}
+    nodes = (
+        {str(n.id): n for n in await db.scalars(select(SceneNode).where(SceneNode.id.in_(node_ids)))}
+        if node_ids
+        else {}
+    )
+    options = (
+        {str(o.id): o for o in await db.scalars(select(ChoiceOption).where(ChoiceOption.id.in_(option_ids)))}
+        if option_ids
+        else {}
+    )
+    characters = await loader.load_characters(db, slot.story_id)
 
-
-# ---------------------------------------------------------------------------------------
-# The reading engine loop
-# ---------------------------------------------------------------------------------------
-
-
-async def _resolve_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
-    story_id = str(slot.story_id)
-    context = await variables_service.load_context(db, user_id, story_id)
-    node_id = slot.current_node_id
-    steps = 0
-
-    while True:
-        if not node_id:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "У этого сохранения нет текущей сцены")
-        steps += 1
-        if steps > MAX_AUTO_TRAVERSAL_STEPS:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Обнаружен слишком длинный автоматический переход между сценами - возможен цикл в сюжете",
-            )
-
-        node = await _get_node(db, node_id)
-
-        if node.type.value == "CONDITION":
-            data = ConditionNodeData.model_validate(node.data)
-            passes = evaluate_condition_group(data.when, context.as_value_map())
-            node_id = data.then_node_id if passes else data.else_node_id
+    log = []
+    for entry in path:
+        node = nodes.get(entry["n"])
+        if node is None:
             continue
-
-        if node.type.value == "EFFECT":
-            data = EffectNodeData.model_validate(node.data)
-            await variables_service.apply_effects(db, user_id, story_id, data.effects)
-            context = await variables_service.load_context(db, user_id, story_id)
-            node_id = data.next_node_id
+        if entry.get("o"):
+            option = options.get(entry["o"])
+            if option is not None:
+                log.append({"type": "CHOICE", "nodeId": entry["n"], "text": option.text})
             continue
-
-        if str(slot.current_node_id) != str(node.id):
-            slot.current_node_id = node.id
-            await db.commit()
-
-        if node.type.value == "END":
-            await wallet_service.grant_xp(
-                db, user_id, CHAPTER_COMPLETE_XP, reason=f"chapter_complete:{slot.chapter_id}"
-            )
-            return {"type": "END", "saveSlot": _to_save_slot_dto(slot)}
-
-        if node.type.value == "DIALOGUE":
-            data = DialogueNodeData.model_validate(node.data)
-            return await _build_dialogue_view(db, node.id, data, slot, context)
-
-        # CHOICE
-        options = list(
-            await db.scalars(
-                select(ChoiceOption).where(ChoiceOption.node_id == node.id).order_by(ChoiceOption.order)
-            )
+        if node.type.value != "DIALOGUE":
+            continue
+        data = node.data or {}
+        speaker_id = data.get("speakerCharacterId") or data.get("speaker_character_id")
+        speaker = characters.get(str(speaker_id)) if speaker_id else None
+        log.append(
+            {
+                "type": "DIALOGUE",
+                "nodeId": entry["n"],
+                "speaker": {"name": speaker["name"], "nameColor": speaker["nameColor"]} if speaker else None,
+                "text": data.get("text"),
+                "isThought": bool(data.get("isThought") or data.get("is_thought")),
+            }
         )
-        data = ChoiceNodeData.model_validate(node.data)
-        return await _build_choice_view(db, node.id, data, options, context, slot)
+    return log
 
 
-async def _build_dialogue_view(
-    db: AsyncSession, node_id, data: DialogueNodeData, slot: SaveSlot, context: VariableContext
-) -> dict:
-    story_id = str(slot.story_id)
-    characters = await _get_character_summaries(db, story_id)
+# ---------------------------------------------------------------------------------------
+# Slot state container
+# ---------------------------------------------------------------------------------------
 
-    speaker = characters.get(data.speaker_character_id) if data.speaker_character_id else None
-    speaker_view = None
-    if speaker:
-        name = speaker["name"]
-        override_key = variable_lookup_key("display_name_override", data.speaker_character_id)
-        override = context.as_value_map().get(override_key)
-        if isinstance(override, str) and override:
-            name = {"ru": override}
-        speaker_view = {"id": speaker["id"], "name": name, "nameColor": speaker["nameColor"]}
-    staged = await _resolve_staged_characters(db, story_id, data.staged, context)
 
-    # A background persists across nodes until a node explicitly sets a new one - authors
-    # only need to set it where it changes, not repeat it on every dialogue node.
-    background_url = data.background_image_url
-    if background_url:
-        if slot.current_background_url != background_url:
-            slot.current_background_url = background_url
-            await db.commit()
+class _StateBox:
+    """Typed access to the slot's JSON state. Always works on a private copy; `_save` writes
+    a fresh dict back so SQLAlchemy sees the JSONB column as changed."""
+
+    def __init__(self, raw: dict | None):
+        raw = raw or {}
+        self._engine = EngineState.from_json(raw)
+        self.history: list[dict] = [dict(h) for h in raw.get("history") or []]
+        self.path: list[dict] = [dict(p) for p in raw.get("path") or []]
+        self._chapter_starts: dict[str, dict] = dict(raw.get("chapterStarts") or {})
+
+    def engine_state(self) -> EngineState:
+        return self._engine.clone()
+
+    def set_engine_state(self, state: EngineState) -> None:
+        self._engine = state.clone()
+
+    def chapter_start(self, chapter_id) -> EngineState | None:
+        raw = self._chapter_starts.get(str(chapter_id))
+        return EngineState.from_json(raw) if raw is not None else None
+
+    def set_chapter_start(self, chapter_id, state: EngineState) -> None:
+        self._chapter_starts[str(chapter_id)] = state.to_json()
+
+    def clear_progress(self) -> None:
+        self.history = []
+        self.path = []
+
+    def push_history(self, rest: RestPoint) -> None:
+        self.history.append(
+            {"nodeId": rest.node.id, "chapterId": rest.node.chapter_id, **rest.state.to_json()}
+        )
+        del self.history[:-MAX_HISTORY]
+
+    def pop_history(self) -> dict | None:
+        return self.history.pop() if self.history else None
+
+    def push_path(self, node_id: str, option_id: str | None = None) -> None:
+        entry = {"n": node_id, "o": option_id} if option_id else {"n": node_id}
+        if self.path and self.path[-1] == entry:
+            return
+        self.path.append(entry)
+        del self.path[:-MAX_PATH]
+
+    def pop_path_to(self, node_id: str) -> None:
+        """Drops log entries after the last visit of `node_id` (used by rollback)."""
+        for index in range(len(self.path) - 1, -1, -1):
+            if self.path[index] == {"n": node_id}:
+                del self.path[index + 1 :]
+                return
+
+    def to_json(self) -> dict:
+        return {
+            "v": runtime.STATE_VERSION,
+            **self._engine.to_json(),
+            "history": self.history,
+            "path": self.path,
+            "chapterStarts": self._chapter_starts,
+        }
+
+
+def _carry_over(state: EngineState) -> EngineState:
+    """Variables travel into the next chapter; music/background/camera do not."""
+    return EngineState(values=dict(state.values))
+
+
+def _save(slot: SaveSlot, box: _StateBox) -> None:
+    slot.state = box.to_json()
+    slot.current_background_url = box.engine_state().stage.get("backgroundUrl")
+
+
+def _is_stale(slot: SaveSlot, expected_node_id: str | None) -> bool:
+    return bool(expected_node_id) and str(slot.current_node_id) != str(expected_node_id)
+
+
+# ---------------------------------------------------------------------------------------
+# Running the engine against the database
+# ---------------------------------------------------------------------------------------
+
+
+async def _run(db: AsyncSession, graph: StoryGraph, state: EngineState, node_id: str | None) -> RestPoint:
+    """`runtime.run_until_rest`, plus loading other chapters on demand when the story jumps
+    across a chapter boundary. The runtime is pure, so simply re-running is safe."""
+    for _ in range(_MAX_CHAPTER_HOPS):
+        try:
+            return runtime.run_until_rest(graph, state, node_id)
+        except EngineError as exc:
+            if exc.code == "MISSING_NODE" and exc.node_id and exc.node_id not in graph.broken:
+                if await loader.extend_with_node_chapter(db, graph, exc.node_id):
+                    continue
+            raise _http_error(exc) from exc
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Слишком длинная цепочка переходов между главами")
+
+
+async def _open(db: AsyncSession, slot: SaveSlot) -> tuple[StoryGraph, _StateBox, RestPoint]:
+    """Loads the slot's chapter graph and re-derives the resting point the player is at."""
+    if not slot.current_node_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "У этого сохранения нет текущей сцены")
+    if slot.chapter_id:
+        graph = await loader.load_chapter_graph(db, slot.story_id, slot.chapter_id)
     else:
-        background_url = slot.current_background_url
-
-    return {
-        "type": "DIALOGUE",
-        "nodeId": str(node_id),
-        "speaker": speaker_view,
-        "text": data.text.model_dump(),
-        "isThought": data.is_thought,
-        "backgroundImageUrl": background_url,
-        "staged": staged,
-        "canAdvance": bool(data.next_node_id),
-        "saveSlot": _to_save_slot_dto(slot),
-    }
+        graph = StoryGraph(nodes={}, variables=await loader.load_variables(db, slot.story_id))
+    box = _StateBox(slot.state)
+    here = await _run(db, graph, box.engine_state(), str(slot.current_node_id))
+    return graph, box, here
 
 
-async def _build_choice_view(
-    db,
-    node_id,
-    data: ChoiceNodeData,
-    options: list[ChoiceOption],
-    context,
+async def _current_view(db: AsyncSession, user_id: str, slot: SaveSlot) -> dict:
+    opened_graph, box, here = await _open(db, slot)
+    outcome = None
+    if here.node.id != str(slot.current_node_id):
+        # The stored pointer was on an automatic node (older save, or content edited under
+        # the player): settle on the real resting node once, so effects are not re-applied.
+        outcome = await _arrive(db, user_id, slot, box, here)
+    return await _view(db, user_id, slot, opened_graph, here, box, outcome)
+
+
+async def _arrive(
+    db: AsyncSession, user_id: str, slot: SaveSlot, box: _StateBox, rest: RestPoint
+) -> dict | None:
+    """Persists arrival at a resting node and pays out completion rewards when it is an END."""
+    slot.current_node_id = rest.node.id
+    slot.chapter_id = rest.node.chapter_id
+    box.set_engine_state(rest.state)
+    if rest.node.type == "DIALOGUE":
+        box.push_path(rest.node.id)
+    _save(slot, box)
+    if rest.node.type == "END":
+        return await _complete_chapter(db, user_id, slot, rest)
+    return None
+
+
+async def _complete_chapter(db: AsyncSession, user_id: str, slot: SaveSlot, rest: RestPoint) -> dict:
+    """Idempotent: the unique (user, chapter) row decides whether rewards are due. A replay,
+    a reload of the end screen or a concurrent duplicate request can never pay twice."""
+    inserted = await db.scalar(
+        pg_insert(PlayerChapterCompletion)
+        .values(user_id=user_id, chapter_id=rest.node.chapter_id)
+        .on_conflict_do_nothing(index_elements=["user_id", "chapter_id"])
+        .returning(PlayerChapterCompletion.id)
+    )
+    await db.execute(
+        pg_insert(PlayerEndingUnlock)
+        .values(
+            user_id=user_id,
+            story_id=slot.story_id,
+            chapter_id=rest.node.chapter_id,
+            node_id=rest.node.id,
+            ending_key=rest.node.data.ending_key,
+        )
+        .on_conflict_do_nothing(index_elements=["user_id", "node_id"])
+    )
+    if inserted is None:
+        completion = await db.scalar(
+            select(PlayerChapterCompletion).where(
+                PlayerChapterCompletion.user_id == user_id,
+                PlayerChapterCompletion.chapter_id == rest.node.chapter_id,
+            )
+        )
+        if completion is not None:
+            completion.times_completed += 1
+        return {"firstCompletion": False, "xp": 0, "soft": 0}
+
+    reward_soft = rest.node.data.reward_soft
+    await wallet_service.grant_xp(
+        db, user_id, CHAPTER_COMPLETE_XP, reason=f"chapter_complete:{rest.node.chapter_id}", commit=False
+    )
+    if reward_soft > 0:
+        await wallet_service.grant_currency(
+            db,
+            user_id,
+            "SOFT",
+            reward_soft,
+            reason=f"chapter_complete:{rest.node.chapter_id}",
+            transaction_type=TransactionType.EARN,
+            commit=False,
+        )
+    return {"firstCompletion": True, "xp": CHAPTER_COMPLETE_XP, "soft": reward_soft}
+
+
+async def _charge_once(db: AsyncSession, user_id: str, option) -> None:
+    """Charges for a paid option unless this account already owns it."""
+    owned = await db.scalar(
+        select(PlayerChoiceUnlock.id).where(
+            PlayerChoiceUnlock.user_id == user_id, PlayerChoiceUnlock.choice_option_id == option.id
+        )
+    )
+    if owned:
+        return
+    await wallet_service.spend_currency(
+        db, user_id, option.cost_currency, option.cost_amount, f"choice:{option.id}", commit=False
+    )
+    db.add(PlayerChoiceUnlock(user_id=user_id, choice_option_id=option.id))
+
+
+# ---------------------------------------------------------------------------------------
+# Views
+# ---------------------------------------------------------------------------------------
+
+
+async def _view(
+    db: AsyncSession,
+    user_id: str,
     slot: SaveSlot,
+    graph: StoryGraph,
+    rest: RestPoint,
+    box: _StateBox,
+    outcome: dict | None = None,
 ) -> dict:
-    wallet = await wallet_service.get_wallet(db, str(slot.user_id))
-    values = context.as_value_map()
-
-    visible_options = []
-    for option in options:
-        visible_when = [Condition.model_validate(c) for c in option.visible_when]
-        if not evaluate_condition_group(visible_when, values):
-            continue
-        balance = (
-            wallet.hard if option.cost_currency and option.cost_currency.value == "HARD" else wallet.soft
-        )
-        visible_options.append(
-            {
-                "id": str(option.id),
-                "text": option.text,
-                "costCurrency": option.cost_currency.value if option.cost_currency else None,
-                "costAmount": option.cost_amount,
-                "affordable": not option.cost_currency
-                or option.cost_amount == 0
-                or balance >= option.cost_amount,
+    characters = await loader.load_characters(db, slot.story_id)
+    balances = None
+    owned: set[str] = set()
+    if rest.node.type == "CHOICE":
+        wallet = await wallet_service.get_wallet(db, user_id)
+        balances = {"SOFT": wallet.soft, "HARD": wallet.hard}
+        paid_ids = [o.id for o in rest.node.options if o.is_paid]
+        if paid_ids:
+            owned = {
+                str(option_id)
+                for option_id in await db.scalars(
+                    select(PlayerChoiceUnlock.choice_option_id).where(
+                        PlayerChoiceUnlock.user_id == user_id,
+                        PlayerChoiceUnlock.choice_option_id.in_(paid_ids),
+                    )
+                )
             }
-        )
 
+    view = views.build_view(graph, rest, characters, balances=balances or {}, owned_option_ids=owned)
+    view["saveSlot"] = _to_save_slot_dto(slot, can_rollback=bool(box.history))
+    if rest.node.type == "END":
+        view["rewards"] = outcome or {"firstCompletion": False, "xp": 0, "soft": 0}
+        view["nextChapter"] = await _next_chapter(db, user_id, rest.node.chapter_id)
+    return view
+
+
+async def _next_chapter(db: AsyncSession, user_id: str, chapter_id: str) -> dict | None:
+    chapter = await db.scalar(
+        select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
+    )
+    if chapter is None:
+        return None
+    candidates = list(
+        await db.scalars(
+            select(Chapter)
+            .join(Season, Chapter.season_id == Season.id)
+            .where(
+                Season.story_id == chapter.season.story_id,
+                Chapter.status == ContentStatus.PUBLISHED,
+                Chapter.entry_node_id.is_not(None),
+            )
+            .options(selectinload(Chapter.season))
+        )
+    )
+    here = (chapter.season.index, chapter.index)
+    later = sorted(
+        (c for c in candidates if (c.season.index, c.index) > here), key=lambda c: (c.season.index, c.index)
+    )
+    if not later:
+        return None
+    nxt = later[0]
+    unlocked = await db.scalar(
+        select(PlayerChapterUnlock.id).where(
+            PlayerChapterUnlock.user_id == user_id, PlayerChapterUnlock.chapter_id == nxt.id
+        )
+    )
     return {
-        "type": "CHOICE",
-        "nodeId": str(node_id),
-        "prompt": data.prompt.model_dump() if data.prompt else None,
-        "options": visible_options,
-        "saveSlot": _to_save_slot_dto(slot),
+        "id": str(nxt.id),
+        "index": nxt.index,
+        "seasonIndex": nxt.season.index,
+        "title": nxt.title,
+        "unlockCost": nxt.unlock_cost,
+        "unlocked": bool(unlocked) or nxt.unlock_cost == 0,
     }
 
 
-async def _resolve_staged_characters(
-    db: AsyncSession, story_id: str, staged: list, context: VariableContext
-) -> list[dict]:
-    if not staged:
-        return []
-    characters = await _get_character_summaries(db, story_id, with_sprites=True)
-    values = context.as_value_map()
-
-    result = []
-    for s in staged:
-        character = characters.get(s.character_id)
-        sprites = character.get("sprites", {}) if character else {}
-
-        # Outfit/wardrobe: if this story defines an "outfit" variable scoped to this
-        # character, the sprite key becomes "{outfit}_{expression}" (e.g. "dress_smile") so
-        # an earlier wardrobe choice is reflected automatically in every later scene, without
-        # the author re-picking a sprite per node. Falls back to the plain expression key for
-        # characters that don't use a wardrobe at all.
-        outfit = values.get(variable_lookup_key("outfit", s.character_id))
-        sprite_url = sprites.get(f"{outfit}_{s.sprite}") if outfit else None
-        if sprite_url is None:
-            sprite_url = sprites.get(s.sprite)
-
-        result.append(
-            {
-                "characterId": s.character_id,
-                "name": character["name"] if character else {"ru": "?"},
-                "nameColor": character["nameColor"] if character else "#FFFFFF",
-                "spriteUrl": sprite_url,
-                "position": s.position,
-            }
-        )
-    return result
-
-
-async def _get_character_summaries(db: AsyncSession, story_id: str, with_sprites: bool = False) -> dict:
-    """Not cached: story rosters are small (a handful of characters), and always reflecting
-    the latest admin edits (a re-uploaded sprite, a renamed character) matters more here than
-    shaving a few milliseconds off a read that already does several queries."""
-    characters = list(await db.scalars(select(Character).where(Character.story_id == story_id)))
-    result = {}
-    for c in characters:
-        entry = {"id": str(c.id), "name": c.name, "nameColor": c.name_color}
-        if with_sprites:
-            entry["sprites"] = c.sprites
-        result[str(c.id)] = entry
-    return result
-
-
-async def _get_owned_slot(db: AsyncSession, user_id: str, save_slot_id: str) -> SaveSlot:
-    slot = await db.get(SaveSlot, save_slot_id)
-    if not slot or str(slot.user_id) != str(user_id):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сохранение не найдено")
-    return slot
-
-
-async def _get_node(db: AsyncSession, node_id) -> SceneNode:
-    if not node_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "У сохранения нет текущей сцены")
-    node = await db.get(SceneNode, node_id)
-    if not node:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сцена не найдена")
-    return node
-
-
-def _to_save_slot_dto(slot: SaveSlot) -> dict:
+def _to_save_slot_dto(slot: SaveSlot, *, can_rollback: bool = False) -> dict:
     return {
         "id": str(slot.id),
         "slotIndex": slot.slot_index,
         "storyId": str(slot.story_id),
         "chapterId": str(slot.chapter_id) if slot.chapter_id else None,
         "updatedAt": slot.updated_at.isoformat(),
+        "canRollback": can_rollback,
     }
+
+
+# ---------------------------------------------------------------------------------------
+# Lookups
+# ---------------------------------------------------------------------------------------
+
+
+async def _get_playable_chapter(db: AsyncSession, chapter_id: str, role: str) -> Chapter:
+    chapter = await db.scalar(
+        select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
+    )
+    if not chapter or chapter.status != ContentStatus.PUBLISHED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
+    story = await db.get(Story, chapter.season.story_id)
+    is_staff = role in STAFF_ROLES
+    if story is None or (story.is_test and not is_staff):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
+    if story.status != ContentStatus.PUBLISHED and not is_staff:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена или ещё не опубликована")
+    if not chapter.entry_node_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У главы не задана начальная сцена")
+    return chapter
+
+
+async def _ensure_chapter_unlocked(db: AsyncSession, user_id: str, chapter: Chapter) -> None:
+    """Spends energy and records the unlock inside the caller's transaction. For a paid
+    chapter the wallet row is locked BEFORE re-checking the unlock, so of two simultaneous
+    requests the second one waits, then sees the first one's unlock and pays nothing."""
+
+    async def already_unlocked() -> bool:
+        return bool(
+            await db.scalar(
+                select(PlayerChapterUnlock.id).where(
+                    PlayerChapterUnlock.user_id == user_id, PlayerChapterUnlock.chapter_id == chapter.id
+                )
+            )
+        )
+
+    if await already_unlocked():
+        return
+    if chapter.unlock_cost > 0:
+        await wallet_service.lock_wallet(db, user_id)
+        if await already_unlocked():
+            return
+        await wallet_service.spend_energy(db, user_id, chapter.unlock_cost, commit=False)
+    await db.execute(
+        pg_insert(PlayerChapterUnlock)
+        .values(user_id=user_id, chapter_id=chapter.id)
+        .on_conflict_do_nothing(index_elements=["user_id", "chapter_id"])
+    )
+
+
+async def _create_slot(db: AsyncSession, user_id: str, story_id, slot_index: int) -> SaveSlot:
+    """Creates the slot inside a savepoint: if a concurrent request created the same
+    (user, story, index) slot first, fall back to that row instead of failing."""
+    slot = SaveSlot(user_id=user_id, story_id=story_id, slot_index=slot_index, state={})
+    try:
+        async with db.begin_nested():
+            db.add(slot)
+            await db.flush()
+        return slot
+    except IntegrityError:
+        existing = await db.scalar(
+            select(SaveSlot)
+            .where(
+                SaveSlot.user_id == user_id,
+                SaveSlot.story_id == story_id,
+                SaveSlot.slot_index == slot_index,
+            )
+            .with_for_update()
+        )
+        if existing is None:
+            raise
+        return existing
+
+
+async def _is_at_end(db: AsyncSession, slot: SaveSlot) -> bool:
+    if not slot.current_node_id:
+        return True
+    node_type = await db.scalar(select(SceneNode.type).where(SceneNode.id == slot.current_node_id))
+    return node_type is None or node_type.value == "END"
+
+
+async def _is_earlier_chapter(db: AsyncSession, target: Chapter, current_chapter_id) -> bool:
+    if not current_chapter_id:
+        return False
+    current = await db.scalar(
+        select(Chapter).where(Chapter.id == current_chapter_id).options(selectinload(Chapter.season))
+    )
+    if current is None:
+        return False
+    return (target.season.index, target.index) < (current.season.index, current.index)
+
+
+async def _get_owned_slot(
+    db: AsyncSession, user_id: str, save_slot_id: str, *, lock: bool = False
+) -> SaveSlot:
+    query = select(SaveSlot).where(SaveSlot.id == save_slot_id)
+    if lock:
+        query = query.with_for_update()
+    try:
+        slot = await db.scalar(query)
+    except Exception as exc:  # noqa: BLE001 - malformed uuid in the URL
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сохранение не найдено") from exc
+    if not slot or str(slot.user_id) != str(user_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сохранение не найдено")
+    return slot

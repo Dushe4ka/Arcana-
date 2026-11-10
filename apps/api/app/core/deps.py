@@ -28,6 +28,22 @@ async def get_current_user(
     return AuthenticatedUser(user_id=payload["sub"], email=payload["email"], role=payload["role"])
 
 
+async def get_optional_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> AuthenticatedUser | None:
+    """For public endpoints that show a little more to signed-in staff. A missing or invalid
+    token is simply "anonymous" here, never an error."""
+    if credentials is None:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if payload is None:
+        return None
+    return AuthenticatedUser(user_id=payload["sub"], email=payload["email"], role=payload["role"])
+
+
+STAFF_ROLES = ("WRITER", "EDITOR", "ADMIN")
+
+
 def require_roles(*roles: str):
     async def checker(
         user: AuthenticatedUser = Depends(get_current_user),

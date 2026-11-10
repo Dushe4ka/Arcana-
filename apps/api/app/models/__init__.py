@@ -11,5 +11,13 @@ from app.models.content import (  # noqa: F401
     VariableDefinition,
 )
 from app.models.economy import CurrencyTransaction, DailyRewardState, Purchase, Wallet  # noqa: F401
-from app.models.player import Favorite, PlayerChapterUnlock, PlayerVariableValue, SaveSlot  # noqa: F401
+from app.models.player import (  # noqa: F401
+    Favorite,
+    PlayerChapterCompletion,
+    PlayerChapterUnlock,
+    PlayerChoiceUnlock,
+    PlayerEndingUnlock,
+    PlayerVariableValue,
+    SaveSlot,
+)
 from app.models.user import CabinetLinkToken, PlayerProfile, RefreshToken, User  # noqa: F401

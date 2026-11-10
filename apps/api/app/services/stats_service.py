@@ -2,7 +2,7 @@
 
 Aggregates one player's own progress (relationship variables, general story variables) for
 display in the player cabinet. Read-only and independent of the condition/effect engine -
-see app/services/variables_service.py for the engine-facing equivalent, which this
+see app/engine/runtime.py for the engine-facing equivalent, which this
 deliberately does not share code with (different shape, different purpose: this is for
 display, that one is for evaluating conditions during play).
 """
@@ -10,8 +10,9 @@ display, that one is for evaluating conditions during play).
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.engine.condition_engine import variable_lookup_key
 from app.models.content import Character, Story, VariableDefinition
-from app.models.player import PlayerVariableValue, SaveSlot
+from app.models.player import SaveSlot
 from app.schemas.stats import GeneralStatOut, RelationshipStatOut, StoryStatsOut
 
 
@@ -40,16 +41,19 @@ async def get_my_stats(db: AsyncSession, user_id: str) -> list[StoryStatsOut]:
             )
             continue
 
-        def_ids = [d.id for d in defs]
-        values = list(
-            await db.scalars(
-                select(PlayerVariableValue).where(
-                    PlayerVariableValue.user_id == user_id,
-                    PlayerVariableValue.variable_definition_id.in_(def_ids),
-                )
-            )
+        # Each save slot is its own playthrough; the cabinet shows the one played most recently.
+        latest_slot = await db.scalar(
+            select(SaveSlot)
+            .where(SaveSlot.user_id == user_id, SaveSlot.story_id == story_id)
+            .order_by(SaveSlot.updated_at.desc())
+            .limit(1)
         )
-        values_by_def_id = {v.variable_definition_id: v.value for v in values}
+        slot_values = (latest_slot.state or {}).get("values", {}) if latest_slot else {}
+        values_by_def_id = {}
+        for d in defs:
+            key = variable_lookup_key(d.key, str(d.character_id) if d.character_id else None)
+            if key in slot_values:
+                values_by_def_id[d.id] = slot_values[key]
 
         character_ids = {d.character_id for d in defs if d.character_id}
         characters = (

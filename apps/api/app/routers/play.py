@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import AuthenticatedUser, get_current_user
 from app.database import get_db
-from app.schemas.player import StartChapterInput, SubmitChoiceInput
+from app.schemas.player import AdvanceInput, StartChapterInput, SubmitChoiceInput
 from app.schemas.responses import SaveSlotOut, SaveSlotWithStoryOut
 from app.services import play_service, saves_service
 
@@ -44,10 +44,11 @@ async def delete_save_slot(
 @router.post("/save-slots/{save_slot_id}/advance")
 async def advance(
     save_slot_id: str,
+    body: AdvanceInput | None = None,
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await play_service.advance(db, user.user_id, save_slot_id)
+    return await play_service.advance(db, user.user_id, save_slot_id, body.node_id if body else None)
 
 
 @router.post("/save-slots/{save_slot_id}/choice")
@@ -57,7 +58,36 @@ async def submit_choice(
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await play_service.submit_choice(db, user.user_id, save_slot_id, body.choice_option_id)
+    return await play_service.submit_choice(
+        db, user.user_id, save_slot_id, body.choice_option_id, body.node_id
+    )
+
+
+@router.post("/save-slots/{save_slot_id}/rollback")
+async def rollback(
+    save_slot_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await play_service.rollback(db, user.user_id, save_slot_id)
+
+
+@router.post("/save-slots/{save_slot_id}/restart")
+async def restart_chapter(
+    save_slot_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await play_service.restart_chapter(db, user.user_id, save_slot_id, role=user.role)
+
+
+@router.get("/save-slots/{save_slot_id}/history")
+async def get_history(
+    save_slot_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await play_service.get_history(db, user.user_id, save_slot_id)
 
 
 @router.post("/chapters/{chapter_id}/start")
@@ -67,4 +97,6 @@ async def start_chapter(
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await play_service.start_chapter(db, user.user_id, chapter_id, body.slot_index)
+    return await play_service.start_chapter(
+        db, user.user_id, chapter_id, body.slot_index, restart=body.restart, role=user.role
+    )

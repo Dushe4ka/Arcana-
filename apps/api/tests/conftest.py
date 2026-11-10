@@ -23,6 +23,7 @@ from collections.abc import AsyncGenerator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
@@ -121,11 +122,35 @@ def auth_headers():
 
 @pytest_asyncio.fixture
 async def make_chapter(db_session: AsyncSession):
-    async def _make_chapter(*, story_genre: str = "ROMANCE", chapter_status: str = "PUBLISHED") -> Chapter:
+    async def _make_chapter(
+        *,
+        story_genre: str = "ROMANCE",
+        chapter_status: str = "PUBLISHED",
+        story_status: str = "PUBLISHED",
+        story: Story | None = None,
+        index: int = 1,
+        unlock_cost: int = 0,
+    ) -> Chapter:
+        if story is not None:
+            season = await db_session.scalar(select(Season).where(Season.story_id == story.id))
+            chapter = Chapter(
+                season_id=season.id,
+                index=index,
+                title={"ru": f"Глава {index}"},
+                status=chapter_status,
+                unlock_cost=unlock_cost,
+            )
+            db_session.add(chapter)
+            await db_session.flush()
+            await db_session.refresh(chapter)
+            chapter.season = season
+            return chapter
+
         story = Story(
             slug=f"test-story-{uuid.uuid4().hex[:8]}",
             title={"ru": "Тестовая история"},
             genre=story_genre,
+            status=story_status,
         )
         db_session.add(story)
         await db_session.flush()
@@ -136,10 +161,10 @@ async def make_chapter(db_session: AsyncSession):
 
         chapter = Chapter(
             season_id=season.id,
-            index=1,
-            title={"ru": "Глава 1"},
+            index=index,
+            title={"ru": f"Глава {index}"},
             status=chapter_status,
-            unlock_cost=0,
+            unlock_cost=unlock_cost,
         )
         db_session.add(chapter)
         await db_session.flush()

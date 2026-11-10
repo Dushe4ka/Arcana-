@@ -30,42 +30,60 @@ async def _get_wallet_by_user(db: AsyncSession, user_id: str, *, for_update: boo
     return wallet
 
 
+async def lock_wallet(db: AsyncSession, user_id: str) -> Wallet:
+    """Takes the wallet row lock for the rest of the current transaction."""
+    return await _get_wallet_by_user(db, user_id, for_update=True)
+
+
 async def _apply_energy_regen(db: AsyncSession, wallet: Wallet) -> None:
     """Recomputes energy based on elapsed time and persists it if it changed. Pure "lazy
     regen" - no cron needed."""
-    if wallet.energy >= MAX_ENERGY:
-        return
+    if _regen_in_place(wallet):
+        await db.commit()
+        await db.refresh(wallet)
 
-    now = datetime.now(UTC)
-    elapsed_minutes = (now - wallet.energy_updated_at).total_seconds() / 60
+
+def _regen_in_place(wallet: Wallet) -> bool:
+    if wallet.energy >= MAX_ENERGY:
+        return False
+    elapsed_minutes = (datetime.now(UTC) - wallet.energy_updated_at).total_seconds() / 60
     regenerated = int(elapsed_minutes // ENERGY_REGEN_MINUTES)
     if regenerated <= 0:
-        return
-
+        return False
     wallet.energy = min(MAX_ENERGY, wallet.energy + regenerated)
     wallet.energy_updated_at = wallet.energy_updated_at + timedelta(
         minutes=regenerated * ENERGY_REGEN_MINUTES
     )
-    await db.commit()
-    await db.refresh(wallet)
+    return True
 
 
-async def spend_energy(db: AsyncSession, user_id: str, amount: int) -> None:
+# Every mutation below locks the wallet row (SELECT ... FOR UPDATE) so two concurrent requests
+# can never both pass the balance check and overdraw it. `commit=False` lets a caller make
+# the wallet change part of a larger atomic operation (e.g. "charge for a choice AND move
+# the story forward") - the caller then owns the commit.
+
+
+async def spend_energy(db: AsyncSession, user_id: str, amount: int, *, commit: bool = True) -> None:
     if amount <= 0:
         return
-    wallet = await get_wallet(db, user_id)
+    wallet = await _get_wallet_by_user(db, user_id, for_update=True)
+    _regen_in_place(wallet)
     if wallet.energy < amount:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно энергии для открытия этой главы")
+    if wallet.energy >= MAX_ENERGY:
+        # Regen is measured from the moment energy first drops below the cap.
+        wallet.energy_updated_at = datetime.now(UTC)
     wallet.energy -= amount
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 async def spend_currency(
-    db: AsyncSession, user_id: str, currency: CurrencyCode, amount: int, reason: str
+    db: AsyncSession, user_id: str, currency: CurrencyCode, amount: int, reason: str, *, commit: bool = True
 ) -> None:
     if amount <= 0:
         return
-    wallet = await _get_wallet_by_user(db, user_id)
+    wallet = await _get_wallet_by_user(db, user_id, for_update=True)
     balance = wallet.soft if currency == "SOFT" else wallet.hard
     if balance < amount:
         raise HTTPException(
@@ -86,19 +104,28 @@ async def spend_currency(
             reason=reason,
         )
     )
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
-async def grant_xp(db: AsyncSession, user_id: str, amount: int, reason: str) -> None:
+async def grant_xp(db: AsyncSession, user_id: str, amount: int, reason: str, *, commit: bool = True) -> None:
     if amount <= 0:
         return
-    wallet = await _get_wallet_by_user(db, user_id)
+    wallet = await _get_wallet_by_user(db, user_id, for_update=True)
     wallet.xp += amount
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 async def grant_currency(
-    db: AsyncSession, user_id: str, currency: CurrencyCode, amount: int, reason: str
+    db: AsyncSession,
+    user_id: str,
+    currency: CurrencyCode,
+    amount: int,
+    reason: str,
+    *,
+    transaction_type: TransactionType = TransactionType.GRANT,
+    commit: bool = True,
 ) -> None:
     if amount <= 0:
         return
@@ -112,11 +139,12 @@ async def grant_currency(
             user_id=user_id,
             currency=currency,
             amount=amount,
-            type=TransactionType.GRANT,
+            type=transaction_type,
             reason=reason,
         )
     )
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 def _reward_for_streak_day(day: int) -> dict:
@@ -126,7 +154,10 @@ def _reward_for_streak_day(day: int) -> dict:
 
 
 async def claim_daily_reward(db: AsyncSession, user_id: str) -> dict:
-    state = await db.scalar(select(DailyRewardState).where(DailyRewardState.user_id == user_id))
+    # Locked so two simultaneous taps can't both pass the "already claimed today" check.
+    state = await db.scalar(
+        select(DailyRewardState).where(DailyRewardState.user_id == user_id).with_for_update()
+    )
     if not state:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Состояние наград не найдено")
 
@@ -142,7 +173,7 @@ async def claim_daily_reward(db: AsyncSession, user_id: str) -> dict:
     state.streak = next_streak
     state.last_claimed_at = now
 
-    wallet = await _get_wallet_by_user(db, user_id)
+    wallet = await _get_wallet_by_user(db, user_id, for_update=True)
     wallet.soft += reward["soft"]
     db.add(
         CurrencyTransaction(

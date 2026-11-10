@@ -15,15 +15,15 @@ router = APIRouter(
 
 @router.post("/chapters/{chapter_id}", response_model=PreviewViewOut)
 async def resolve_preview(chapter_id: str, body: PreviewResolveInput, db: AsyncSession = Depends(get_db)):
-    view, values, background_url = await preview_service.resolve(
-        db, chapter_id, body.node_id, body.values, body.background_url
+    view, values, background_url, stage = await preview_service.resolve(
+        db, chapter_id, body.node_id, body.values, body.background_url, body.stage
     )
-    return PreviewViewOut(view=view, values=values, background_url=background_url)
+    return PreviewViewOut(view=view, values=values, background_url=background_url, stage=stage)
 
 
 @router.post("/chapters/{chapter_id}/choose", response_model=PreviewViewOut)
 async def choose_preview(chapter_id: str, body: PreviewChooseInput, db: AsyncSession = Depends(get_db)):
-    view, values, background_url = await preview_service.choose(
-        db, chapter_id, body.node_id, body.choice_option_id, body.values, body.background_url
+    view, values, background_url, stage = await preview_service.choose(
+        db, chapter_id, body.node_id, body.choice_option_id, body.values, body.background_url, body.stage
     )
-    return PreviewViewOut(view=view, values=values, background_url=background_url)
+    return PreviewViewOut(view=view, values=values, background_url=background_url, stage=stage)

@@ -1,5 +1,6 @@
+from app.engine.condition_engine import variable_lookup_key
 from app.models.content import Character, VariableDefinition
-from app.models.player import PlayerVariableValue, SaveSlot
+from app.models.player import SaveSlot
 
 
 async def test_my_stats_splits_relationships_and_general(client, make_user, auth_headers, make_chapter, db_session):
@@ -33,9 +34,14 @@ async def test_my_stats_splits_relationships_and_general(client, make_user, auth
     await db_session.flush()
 
     db_session.add(
-        PlayerVariableValue(user_id=user.id, variable_definition_id=relationship_def.id, value=42)
+        SaveSlot(
+            user_id=user.id,
+            story_id=story_id,
+            slot_index=0,
+            chapter_id=chapter.id,
+            state={"values": {variable_lookup_key("affection", str(character.id)): 42}},
+        )
     )
-    db_session.add(SaveSlot(user_id=user.id, story_id=story_id, slot_index=0, chapter_id=chapter.id))
     await db_session.commit()
 
     response = await client.get("/api/me/stats", headers=headers)
@@ -54,7 +60,7 @@ async def test_my_stats_splits_relationships_and_general(client, make_user, auth
     assert len(story_stats["general"]) == 1
     general = story_stats["general"][0]
     assert general["variableKey"] == "chapter_visited_library"
-    assert general["value"] is False  # untouched PlayerVariableValue -> falls back to default_value
+    assert general["value"] is False  # never changed in this playthrough -> falls back to default_value
 
 
 async def test_my_stats_excludes_stories_with_no_progress(client, make_user, auth_headers, make_chapter):

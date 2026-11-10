@@ -21,14 +21,14 @@ async def list_all(db: AsyncSession) -> list[Story]:
     return list(result)
 
 
-async def list_published(db: AsyncSession) -> list[Story]:
-    result = await db.scalars(
-        select(Story).where(Story.status == ContentStatus.PUBLISHED).order_by(Story.created_at.desc())
-    )
-    return list(result)
+async def list_published(db: AsyncSession, *, include_test: bool = False) -> list[Story]:
+    query = select(Story).where(Story.status == ContentStatus.PUBLISHED)
+    if not include_test:
+        query = query.where(Story.is_test.is_(False))
+    return list(await db.scalars(query.order_by(Story.created_at.desc())))
 
 
-async def get_published_detail(db: AsyncSession, story_id: str) -> Story:
+async def get_published_detail(db: AsyncSession, story_id: str, *, include_test: bool = False) -> Story:
     story = await db.scalar(
         select(Story)
         .where(Story.id == story_id, Story.status == ContentStatus.PUBLISHED)
@@ -37,7 +37,7 @@ async def get_published_detail(db: AsyncSession, story_id: str) -> Story:
             selectinload(Story.characters),
         )
     )
-    if not story:
+    if not story or (story.is_test and not include_test):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "История не найдена")
     # Only expose published chapters to players, even within a published season.
     for season in story.seasons:

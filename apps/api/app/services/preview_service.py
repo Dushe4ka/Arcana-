@@ -1,223 +1,66 @@
-"""apps/api/app/services/preview_service.py
-
-Stateless chapter preview for authors - walks the same node-type branching logic as the real
-reading engine (app/services/play_service.py), but never touches SaveSlot, Wallet, or
-PlayerVariableValue. See the module docstring in the implementation plan task for why this is
-a separate implementation rather than a shared one.
-"""
+"""Stateless chapter preview for authors. Runs the exact same narrative runtime as the live
+reader (app/engine/runtime.py), but keeps the playthrough state on the client: nothing here
+touches SaveSlot, Wallet or any player table."""
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.engine.condition_engine import (
-    VariableBounds,
-    apply_effect,
-    evaluate_condition_group,
-    variable_lookup_key,
-)
-from app.models.content import Chapter, Character, ChoiceOption, SceneNode, VariableDefinition
-from app.schemas.common import Condition, Effect, VariableScalar
-from app.schemas.content import ChoiceNodeData, ConditionNodeData, DialogueNodeData, EffectNodeData
+from app.engine import loader, runtime, views
+from app.engine.runtime import EngineError, EngineState, RestPoint, StoryGraph
+from app.models.content import Chapter
+from app.schemas.common import VariableScalar
 
-MAX_PREVIEW_STEPS = 100
+PreviewResult = tuple[dict, dict[str, VariableScalar], str | None, dict]
 
 
-class _ChapterGraph:
-    """Everything preview needs about one chapter, loaded once per request."""
-
-    def __init__(
-        self,
-        nodes_by_id: dict[str, SceneNode],
-        choices_by_node_id: dict[str, list[ChoiceOption]],
-        characters_by_id: dict[str, Character],
-        variable_defs: list[VariableDefinition],
-    ):
-        self.nodes_by_id = nodes_by_id
-        self.choices_by_node_id = choices_by_node_id
-        self.characters_by_id = characters_by_id
-        self.variable_defs = variable_defs
-
-    def default_values(self) -> dict[str, VariableScalar]:
-        return {
-            variable_lookup_key(d.key, str(d.character_id) if d.character_id else None): d.default_value
-            for d in self.variable_defs
-        }
-
-    def find_def(self, variable_key: str, character_id: str | None) -> VariableDefinition | None:
-        for d in self.variable_defs:
-            def_character_id = str(d.character_id) if d.character_id else None
-            if d.key == variable_key and def_character_id == character_id:
-                return d
-        return None
+def _http_error(exc: EngineError) -> HTTPException:
+    code = status.HTTP_404_NOT_FOUND if exc.code == "MISSING_NODE" else status.HTTP_400_BAD_REQUEST
+    return HTTPException(code, {"message": exc.message, "code": exc.code, "nodeId": exc.node_id})
 
 
-async def _load_graph(db: AsyncSession, chapter_id: str) -> tuple[Chapter, _ChapterGraph]:
+async def _load(db: AsyncSession, chapter_id: str) -> tuple[Chapter, StoryGraph, dict]:
     chapter = await db.scalar(
         select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
     )
     if not chapter:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена")
+    story_id = chapter.season.story_id
+    graph = await loader.load_chapter_graph(db, story_id, chapter.id)
+    characters = await loader.load_characters(db, story_id)
+    return chapter, graph, characters
 
-    story_id = str(chapter.season.story_id)
 
-    nodes = list(
-        await db.scalars(
-            select(SceneNode)
-            .where(SceneNode.chapter_id == chapter_id)
-            .options(selectinload(SceneNode.choice_options))
-        )
+def _state(graph: StoryGraph, values: dict, background_url: str | None, stage: dict | None) -> EngineState:
+    state = EngineState.from_json(
+        {"values": {k: v for k, v in values.items() if k in graph.variables}, "stage": stage}
     )
-    nodes_by_id = {str(n.id): n for n in nodes}
-    choices_by_node_id = {str(n.id): sorted(n.choice_options, key=lambda o: o.order) for n in nodes}
+    if background_url:
+        state.stage["backgroundUrl"] = background_url
+    return state
 
-    characters = list(await db.scalars(select(Character).where(Character.story_id == story_id)))
-    characters_by_id = {str(c.id): c for c in characters}
 
-    variable_defs = list(
-        await db.scalars(select(VariableDefinition).where(VariableDefinition.story_id == story_id))
+async def _run(db: AsyncSession, graph: StoryGraph, state: EngineState, node_id: str | None) -> RestPoint:
+    for _ in range(4):
+        try:
+            return runtime.run_until_rest(graph, state, node_id)
+        except EngineError as exc:
+            if exc.code == "MISSING_NODE" and exc.node_id and exc.node_id not in graph.broken:
+                if await loader.extend_with_node_chapter(db, graph, exc.node_id):
+                    continue
+            raise _http_error(exc) from exc
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Слишком длинная цепочка переходов между главами")
+
+
+def _result(graph: StoryGraph, rest: RestPoint, characters: dict) -> PreviewResult:
+    view = views.build_view(graph, rest, characters, balances=None)
+    return (
+        view,
+        runtime.effective_values(graph, rest.state),
+        rest.state.stage.get("backgroundUrl"),
+        rest.state.stage,
     )
-
-    return chapter, _ChapterGraph(nodes_by_id, choices_by_node_id, characters_by_id, variable_defs)
-
-
-def _get_node(graph: _ChapterGraph, node_id: str) -> SceneNode:
-    node = graph.nodes_by_id.get(node_id)
-    if not node:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сцена не найдена в этой главе")
-    return node
-
-
-def _apply_effects_in_memory(
-    graph: _ChapterGraph, values: dict[str, VariableScalar], effects
-) -> dict[str, VariableScalar]:
-    next_values = dict(values)
-    for effect in effects:
-        definition = graph.find_def(effect.variable_key, effect.character_id)
-        if not definition:
-            continue
-        key = variable_lookup_key(effect.variable_key, effect.character_id)
-        current = next_values.get(key, definition.default_value)
-        next_values[key] = apply_effect(
-            effect, current, VariableBounds(definition.min_value, definition.max_value)
-        )
-    return next_values
-
-
-def _resolve_staged(graph: _ChapterGraph, staged: list, values: dict[str, VariableScalar]) -> list[dict]:
-    result = []
-    for s in staged:
-        character = graph.characters_by_id.get(s.character_id)
-        sprites = character.sprites if character else {}
-        outfit = values.get(variable_lookup_key("outfit", s.character_id))
-        sprite_url = sprites.get(f"{outfit}_{s.sprite}") if outfit else None
-        if sprite_url is None:
-            sprite_url = sprites.get(s.sprite)
-        result.append(
-            {
-                "characterId": s.character_id,
-                "name": character.name if character else {"ru": "?"},
-                "nameColor": character.name_color if character else "#FFFFFF",
-                "spriteUrl": sprite_url,
-                "position": s.position,
-            }
-        )
-    return result
-
-
-def _walk(
-    graph: _ChapterGraph,
-    start_node_id: str,
-    values: dict[str, VariableScalar],
-    background_url: str | None,
-) -> tuple[dict, dict[str, VariableScalar], str | None]:
-    node_id = start_node_id
-    steps = 0
-
-    while True:
-        if steps > MAX_PREVIEW_STEPS:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Обнаружен слишком длинный автоматический переход между сценами - возможен цикл в сюжете",
-            )
-        steps += 1
-        node = _get_node(graph, node_id)
-
-        if node.type.value == "CONDITION":
-            data = ConditionNodeData.model_validate(node.data)
-            passes = evaluate_condition_group(data.when, values)
-            next_id = data.then_node_id if passes else data.else_node_id
-            if not next_id:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Условный узел не ведёт никуда дальше")
-            node_id = next_id
-            continue
-
-        if node.type.value == "EFFECT":
-            data = EffectNodeData.model_validate(node.data)
-            values = _apply_effects_in_memory(graph, values, data.effects)
-            if not data.next_node_id:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Узел эффекта не ведёт никуда дальше")
-            node_id = data.next_node_id
-            continue
-
-        if node.type.value == "END":
-            return {"type": "END", "nodeId": str(node.id)}, values, background_url
-
-        if node.type.value == "DIALOGUE":
-            data = DialogueNodeData.model_validate(node.data)
-            if data.background_image_url:
-                background_url = data.background_image_url
-            speaker = (
-                graph.characters_by_id.get(data.speaker_character_id) if data.speaker_character_id else None
-            )
-            speaker_view = None
-            if speaker:
-                name = speaker.name
-                override_key = variable_lookup_key("display_name_override", data.speaker_character_id)
-                override = values.get(override_key)
-                if isinstance(override, str) and override:
-                    name = {"ru": override}
-                speaker_view = {"id": str(speaker.id), "name": name, "nameColor": speaker.name_color}
-            view = {
-                "type": "DIALOGUE",
-                "nodeId": str(node.id),
-                "speaker": speaker_view,
-                "text": data.text.model_dump(),
-                "isThought": data.is_thought,
-                "backgroundImageUrl": background_url,
-                "staged": _resolve_staged(graph, data.staged, values),
-                "canAdvance": bool(data.next_node_id),
-                "nextNodeId": data.next_node_id,
-            }
-            return view, values, background_url
-
-        # CHOICE
-        data = ChoiceNodeData.model_validate(node.data)
-        options = graph.choices_by_node_id.get(str(node.id), [])
-        visible_options = []
-        for option in options:
-            visible_when = [Condition.model_validate(c) for c in option.visible_when]
-            if not evaluate_condition_group(visible_when, values):
-                continue
-            visible_options.append(
-                {
-                    "id": str(option.id),
-                    "text": option.text,
-                    "costCurrency": option.cost_currency.value if option.cost_currency else None,
-                    "costAmount": option.cost_amount,
-                    # Preview has no wallet to check against - every visible option reads as
-                    # affordable, same as an author previewing with unlimited currency.
-                    "affordable": True,
-                }
-            )
-        view = {
-            "type": "CHOICE",
-            "nodeId": str(node.id),
-            "prompt": data.prompt.model_dump() if data.prompt else None,
-            "options": visible_options,
-        }
-        return view, values, background_url
 
 
 async def resolve(
@@ -226,14 +69,14 @@ async def resolve(
     node_id: str | None,
     values: dict,
     background_url: str | None = None,
-) -> tuple[dict, dict, str | None]:
-    chapter, graph = await _load_graph(db, chapter_id)
+    stage: dict | None = None,
+) -> PreviewResult:
+    chapter, graph, characters = await _load(db, chapter_id)
     start_node_id = node_id or (str(chapter.entry_node_id) if chapter.entry_node_id else None)
     if not start_node_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "У главы не задана начальная сцена")
-
-    merged_values = {**graph.default_values(), **values}
-    return _walk(graph, start_node_id, merged_values, background_url)
+    rest = await _run(db, graph, _state(graph, values, background_url, stage), start_node_id)
+    return _result(graph, rest, characters)
 
 
 async def choose(
@@ -243,23 +86,14 @@ async def choose(
     choice_option_id: str,
     values: dict,
     background_url: str | None = None,
-) -> tuple[dict, dict, str | None]:
-    chapter, graph = await _load_graph(db, chapter_id)
-    node = _get_node(graph, node_id)
-    if node.type.value != "CHOICE":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "В этом узле нет вариантов выбора")
-
-    option = next(
-        (o for o in graph.choices_by_node_id.get(node_id, []) if str(o.id) == choice_option_id), None
-    )
-    if not option:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Этот вариант недоступен в этом узле")
-
-    merged_values = {**graph.default_values(), **values}
-    next_values = _apply_effects_in_memory(
-        graph, merged_values, [Effect.model_validate(e) for e in option.effects]
-    )
-    if not option.next_node_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "У этого варианта нет продолжения")
-
-    return _walk(graph, str(option.next_node_id), next_values, background_url)
+    stage: dict | None = None,
+) -> PreviewResult:
+    _, graph, characters = await _load(db, chapter_id)
+    state = _state(graph, values, background_url, stage)
+    try:
+        node = graph.node(node_id)
+        option, state_after = runtime.take_option(graph, state, node, choice_option_id)
+    except EngineError as exc:
+        raise _http_error(exc) from exc
+    rest = await _run(db, graph, state_after, option.next_node_id)
+    return _result(graph, rest, characters)
