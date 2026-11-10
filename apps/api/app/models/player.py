@@ -133,6 +133,19 @@ class PlayerCgUnlock(Base, UUIDPKMixin):
     unlocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class PlayerChoicePick(Base, UUIDPKMixin):
+    """That a player has, at least once, picked a given option. One row per player per
+    option, so analytics counts people, not taps - replays and rollbacks do not inflate it.
+    Keyed by the option's stable id, never by its text."""
+
+    __tablename__ = "player_choice_picks"
+    __table_args__ = (UniqueConstraint("user_id", "choice_option_id"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    choice_option_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    picked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class Favorite(Base, UUIDPKMixin):
     __tablename__ = "favorites"
     __table_args__ = (UniqueConstraint("user_id", "story_id"),)

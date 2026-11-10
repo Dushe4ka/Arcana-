@@ -67,3 +67,19 @@ class PlayerProfile(Base, UUIDPKMixin, TimestampMixin):
     locale: Mapped[str] = mapped_column(String, default="ru")
 
     user: Mapped[User] = relationship(back_populates="profile")
+
+
+class AdminAuditLog(Base, UUIDPKMixin):
+    """Who changed what in the admin panel. Written for every state-changing /api/admin
+    request - enough to answer "who published this" or "who deleted that chapter"."""
+
+    __tablename__ = "admin_audit_log"
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    user_email: Mapped[str] = mapped_column(String)
+    method: Mapped[str] = mapped_column(String)
+    path: Mapped[str] = mapped_column(String)
+    status_code: Mapped[int] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)

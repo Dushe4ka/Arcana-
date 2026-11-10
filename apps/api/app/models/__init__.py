@@ -18,9 +18,10 @@ from app.models.player import (  # noqa: F401
     PlayerCgUnlock,
     PlayerChapterCompletion,
     PlayerChapterUnlock,
+    PlayerChoicePick,
     PlayerChoiceUnlock,
     PlayerEndingUnlock,
     PlayerVariableValue,
     SaveSlot,
 )
-from app.models.user import CabinetLinkToken, PlayerProfile, RefreshToken, User  # noqa: F401
+from app.models.user import AdminAuditLog, CabinetLinkToken, PlayerProfile, RefreshToken, User  # noqa: F401

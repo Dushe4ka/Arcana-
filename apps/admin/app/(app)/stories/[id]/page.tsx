@@ -75,6 +75,9 @@ export default function StoryDetailPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Link href={`/stories/${story.id}/analytics`} className="rounded border border-neutral-300 px-3 py-2 text-sm">
+            Аналитика
+          </Link>
           <button onClick={onTogglePublish} className="rounded border border-neutral-300 px-3 py-2 text-sm">
             {story.status === "PUBLISHED" ? "Снять с публикации" : "Опубликовать"}
           </button>

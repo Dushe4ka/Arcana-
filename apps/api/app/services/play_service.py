@@ -37,6 +37,7 @@ from app.models.player import (
     PlayerCgUnlock,
     PlayerChapterCompletion,
     PlayerChapterUnlock,
+    PlayerChoicePick,
     PlayerChoiceUnlock,
     PlayerEndingUnlock,
     SaveSlot,
@@ -174,6 +175,11 @@ async def submit_choice(
     if option.is_paid:
         await _charge_once(db, user_id, option)
 
+    await db.execute(
+        pg_insert(PlayerChoicePick)
+        .values(user_id=user_id, choice_option_id=option.id)
+        .on_conflict_do_nothing(index_elements=["user_id", "choice_option_id"])
+    )
     box.push_history(here)
     box.push_path(here.node.id, option.id)
     outcome = await _arrive(db, user_id, slot, box, rest)

@@ -22,6 +22,7 @@ from app.schemas.responses import (
     VariableUsageOut,
 )
 from app.services import (
+    analytics_service,
     import_service,
     publications_service,
     qa_service,
@@ -51,6 +52,12 @@ async def get_story(story_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/stories/{story_id}/variable-usages", response_model=list[VariableUsageOut])
 async def list_variable_usages(story_id: str, db: AsyncSession = Depends(get_db)):
     return await variable_usage_service.list_usages(db, story_id)
+
+
+@router.get("/stories/{story_id}/analytics")
+async def story_analytics(story_id: str, db: AsyncSession = Depends(get_db)):
+    """Chapter funnel (started / completed / reach) and how players split on each choice."""
+    return await analytics_service.story_analytics(db, story_id)
 
 
 @router.get("/stories/{story_id}/qa")

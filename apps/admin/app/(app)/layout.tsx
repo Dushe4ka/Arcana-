@@ -44,6 +44,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               Сотрудники
             </Link>
           )}
+          {user?.role === "ADMIN" && (
+            <Link href="/audit" className="text-sm text-neutral-600 hover:text-neutral-900">
+              Журнал действий
+            </Link>
+          )}
         </div>
         <div className="flex items-center gap-4 text-sm text-neutral-600">
           <span>{user?.email}</span>

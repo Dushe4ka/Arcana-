@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
+from app.core import audit
 from app.core.errors import register_exception_handlers
 from app.routers import (
     auth,
@@ -49,6 +50,8 @@ async def log_requests(request: Request, call_next):
     start = time.monotonic()
     response = await call_next(request)
     duration_ms = (time.monotonic() - start) * 1000
+    if audit.should_audit(request):
+        await audit.record(request, response.status_code)
     access_logger.info(
         "%s %s %s %.0fms",
         request.method,

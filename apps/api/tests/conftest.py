@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
+from app.core import audit
 from app.core.security import create_access_token, hash_password
 from app.database import Base, get_db
 from app.main import app
@@ -85,10 +86,12 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
         yield db_session
 
     app.dependency_overrides[get_db] = _get_db_override
+    audit.enabled = False  # see app/core/audit.py; test_audit_log turns it back on
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.clear()
+    audit.enabled = True
 
 
 @pytest_asyncio.fixture
