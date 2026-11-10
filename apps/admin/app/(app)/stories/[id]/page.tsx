@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+
+import { LocalizationSection } from "@/components/LocalizationSection";
 import { useParams, useRouter } from "next/navigation";
 import { seasonCreateSchema, chapterCreateSchema } from "@arcana/shared";
 
@@ -99,6 +101,8 @@ export default function StoryDetailPage() {
         variableDefinitions={story.variableDefinitions}
         onChanged={load}
       />
+
+      <LocalizationSection storyId={story.id} slug={story.slug} />
     </div>
   );
 }

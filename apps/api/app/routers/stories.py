@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, status
+from fastapi import APIRouter, Depends, Query, UploadFile, status
 from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,7 @@ from app.schemas.responses import (
 from app.services import (
     analytics_service,
     import_service,
+    localization_service,
     publications_service,
     qa_service,
     stories_service,
@@ -186,3 +187,34 @@ async def preview_script_import(chapter_id: str, body: ScriptImportInput, db: As
 @router.post("/chapters/{chapter_id}/import", status_code=status.HTTP_201_CREATED)
 async def commit_script_import(chapter_id: str, body: ScriptImportInput, db: AsyncSession = Depends(get_db)):
     return await import_service.commit(db, chapter_id, body.text, body.speakers)
+
+
+# --- Localization ------------------------------------------------------------------------
+
+
+class TranslationUnitIn(CamelModel):
+    key: str
+    source_hash: str | None = None
+    translation: str | None = None
+
+
+class TranslationImportInput(CamelModel):
+    locale: str
+    units: list[TranslationUnitIn] = Field(max_length=50_000)
+
+
+@router.get("/stories/{story_id}/localization")
+async def export_localization(story_id: str, locale: str = Query(), db: AsyncSession = Depends(get_db)):
+    """Every player-visible string of the story with its translation state for `locale`."""
+    return await localization_service.export(db, story_id, locale)
+
+
+@router.post("/stories/{story_id}/localization")
+async def import_localization(
+    story_id: str, body: TranslationImportInput, db: AsyncSession = Depends(get_db)
+):
+    """Applies translations to the draft. Units whose Russian source changed since the export
+    are skipped and reported. Publish the affected chapters to release the result."""
+    return await localization_service.apply(
+        db, story_id, body.locale, [u.model_dump(by_alias=True) for u in body.units]
+    )
