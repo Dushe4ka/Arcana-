@@ -450,3 +450,27 @@ async def test_catalog_lists_test_stories_only_for_staff(client, make_user, auth
     listed = (await client.get("/api/catalog/stories", headers=auth_headers(editor))).json()
     assert [s["id"] for s in listed] == [str(story.id)] and listed[0]["isTest"] is True
     assert (await client.get(f"/api/catalog/stories/{story.id}", headers=auth_headers(editor))).status_code == 200
+
+
+async def test_catalog_returns_seasons_and_chapters_in_reading_order(client, make_chapter, db_session):
+    from app.models.content import Chapter, Season, Story
+
+    # Created deliberately out of order: chapter 3, then 1, then 2; season 2 before season 1.
+    third = await make_chapter(index=3)
+    season = third.season
+    story_id = season.story_id
+    story = await db_session.get(Story, story_id)
+    await make_chapter(story=story, index=1)
+    await make_chapter(story=story, index=2)
+    season.index = 2
+    await db_session.flush()
+    first_season = Season(story_id=story_id, index=1, title={"ru": "Первый"})
+    db_session.add(first_season)
+    await db_session.flush()
+    db_session.add(Chapter(season_id=first_season.id, index=1, title={"ru": "Пролог"}, status="PUBLISHED"))
+    await db_session.flush()
+    db_session.expunge_all()
+
+    detail = (await client.get(f"/api/catalog/stories/{story_id}")).json()
+    assert [s["index"] for s in detail["seasons"]] == [1, 2]
+    assert [c["index"] for c in detail["seasons"][1]["chapters"]] == [1, 2, 3]

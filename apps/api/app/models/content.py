@@ -30,7 +30,10 @@ class Story(Base, UUIDPKMixin, TimestampMixin):
     # published - only staff accounts see and can play them.
     is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
-    seasons: Mapped[list["Season"]] = relationship(back_populates="story", cascade="all, delete-orphan")
+    # Always in reading order - clients render these lists as-is.
+    seasons: Mapped[list["Season"]] = relationship(
+        back_populates="story", cascade="all, delete-orphan", order_by="Season.index"
+    )
     characters: Mapped[list["Character"]] = relationship(back_populates="story", cascade="all, delete-orphan")
     variable_definitions: Mapped[list["VariableDefinition"]] = relationship(
         back_populates="story", cascade="all, delete-orphan"
@@ -48,7 +51,9 @@ class Season(Base, UUIDPKMixin, TimestampMixin):
     title: Mapped[dict] = mapped_column(JSONB)
 
     story: Mapped[Story] = relationship(back_populates="seasons")
-    chapters: Mapped[list["Chapter"]] = relationship(back_populates="season", cascade="all, delete-orphan")
+    chapters: Mapped[list["Chapter"]] = relationship(
+        back_populates="season", cascade="all, delete-orphan", order_by="Chapter.index"
+    )
 
 
 class Chapter(Base, UUIDPKMixin, TimestampMixin):
