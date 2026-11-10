@@ -13,10 +13,13 @@ export function ImageUpload({
   label,
   currentUrl,
   onUploaded,
+  kind = "image",
 }: {
   label: string;
   currentUrl?: string | null;
   onUploaded: (url: string) => void;
+  /** "audio" switches the file picker and the preview to sound files (music, effects). */
+  kind?: "image" | "audio";
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +49,18 @@ export function ImageUpload({
   return (
     <div className="space-y-2">
       <label className="block text-sm text-neutral-600">{label}</label>
-      {currentUrl && (
+      {currentUrl && kind === "image" && (
         // eslint-disable-next-line @next/next/no-img-element -- arbitrary uploaded-file URLs, not a static local asset next/image can optimize
         <img src={currentUrl} alt="" className="h-24 w-24 rounded border border-neutral-300 object-cover" />
       )}
-      <input type="file" accept="image/png,image/jpeg,image/webp" onChange={onFileChange} disabled={uploading} className="text-sm" />
+      {currentUrl && kind === "audio" && <audio src={currentUrl} controls preload="none" className="h-8 w-full max-w-sm" />}
+      <input
+        type="file"
+        accept={kind === "audio" ? "audio/mpeg,audio/ogg,audio/wav,audio/mp4,.mp3,.ogg,.wav,.m4a" : "image/png,image/jpeg,image/webp,image/gif"}
+        onChange={onFileChange}
+        disabled={uploading}
+        className="text-sm"
+      />
       {uploading && <p className="text-sm text-neutral-500">Загрузка…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
     </div>

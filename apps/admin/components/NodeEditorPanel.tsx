@@ -16,7 +16,73 @@ const STAGE_POSITIONS = [
 
 type StagePosition = (typeof STAGE_POSITIONS)[number]["value"];
 
-type StagedRow = { characterId: string; sprite: string; position: StagePosition };
+type StagedRow = { characterId: string; sprite: string; position: StagePosition; animation?: string | null };
+
+// Values mirror the Literal types in apps/api/app/schemas/content.py.
+const SPRITE_ANIMATIONS = [
+  { value: "", label: "без анимации" },
+  { value: "fade_in", label: "проявиться" },
+  { value: "slide_in", label: "выйти из-за края" },
+  { value: "bounce", label: "подпрыгнуть" },
+  { value: "shake", label: "вздрогнуть" },
+  { value: "nod", label: "кивнуть" },
+  { value: "lean_in", label: "податься вперёд" },
+];
+const ATMOSPHERES = [
+  { value: "", label: "не менять" },
+  { value: "none", label: "убрать" },
+  { value: "rain", label: "дождь" },
+  { value: "snow", label: "снег" },
+  { value: "fog", label: "туман" },
+  { value: "dust", label: "пыль в луче света" },
+  { value: "sparkles", label: "золотые искры" },
+  { value: "petals", label: "лепестки" },
+];
+const SCREEN_EFFECTS = [
+  { value: "", label: "нет" },
+  { value: "shake", label: "тряска" },
+  { value: "flash", label: "вспышка" },
+  { value: "heartbeat", label: "удар сердца" },
+  { value: "blur_in", label: "из расфокуса" },
+];
+const TRANSITIONS = [
+  { value: "", label: "обычная смена реплики" },
+  { value: "fade", label: "через затемнение" },
+  { value: "dissolve", label: "растворение" },
+  { value: "slide", label: "сдвиг" },
+];
+
+type MusicCue = { action: "play" | "stop"; url?: string | null; loop?: boolean; volume?: number; fadeMs?: number };
+type CameraCue = { zoom: number; focus: StagePosition; durationMs?: number };
+
+function LabeledSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block text-xs text-neutral-600">
+      {label}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 function NextNodeSelect({
   value,
@@ -107,7 +173,25 @@ function DialogueForm({
     backgroundImageUrl?: string | null;
     staged?: StagedRow[];
     nextNodeId?: string | null;
+    music?: MusicCue | null;
+    sfxUrl?: string | null;
+    cgImageUrl?: string | null;
+    atmosphere?: string | null;
+    camera?: CameraCue | null;
+    screenEffect?: string | null;
+    transition?: string | null;
   };
+  const [music, setMusic] = useState<MusicCue | null>(data.music ?? null);
+  const [sfxUrl, setSfxUrl] = useState<string | null>(data.sfxUrl ?? null);
+  // undefined/null = keep whatever CG is showing, "" = hide it, url = show this one.
+  const [cgImageUrl, setCgImageUrl] = useState<string | null>(data.cgImageUrl ?? null);
+  const [atmosphere, setAtmosphere] = useState(data.atmosphere ?? "");
+  const [camera, setCamera] = useState<CameraCue | null>(data.camera ?? null);
+  const [screenEffect, setScreenEffect] = useState(data.screenEffect ?? "");
+  const [transition, setTransition] = useState(data.transition ?? "");
+  const hasDirections = Boolean(
+    data.music || data.sfxUrl || data.cgImageUrl != null || data.atmosphere || data.camera || data.screenEffect || data.transition,
+  );
   const [speakerCharacterId, setSpeakerCharacterId] = useState<string | null>(data.speakerCharacterId ?? null);
   const [textRu, setTextRu] = useState(data.text?.ru ?? "");
   const [isThought, setIsThought] = useState(Boolean(data.isThought));
@@ -246,6 +330,18 @@ function DialogueForm({
                   </option>
                 ))}
               </select>
+              <select
+                aria-label="Анимация появления"
+                value={row.animation ?? ""}
+                onChange={(e) => updateStagedRow(i, { animation: e.target.value || null })}
+                className="rounded border border-neutral-300 px-2 py-1"
+              >
+                {SPRITE_ANIMATIONS.map((a) => (
+                  <option key={a.value} value={a.value}>
+                    {a.label}
+                  </option>
+                ))}
+              </select>
               <button type="button" onClick={() => removeStagedRow(i)} className="text-red-600 underline">
                 Удалить
               </button>
@@ -256,6 +352,99 @@ function DialogueForm({
           + Добавить
         </button>
       </div>
+      <details className="rounded border border-neutral-200 bg-white p-3" open={hasDirections}>
+        <summary className="cursor-pointer text-xs font-medium text-neutral-600">
+          Режиссура: музыка, звук, атмосфера, камера
+        </summary>
+        <p className="mt-2 text-xs text-neutral-500">
+          Всё здесь необязательно. Музыка, атмосфера, камера и иллюстрация остаются на экране в следующих
+          репликах, пока вы не измените их снова — задавать их нужно только там, где что-то меняется.
+        </p>
+        <div className="mt-3 space-y-3">
+          <div className="space-y-2">
+            <LabeledSelect
+              label="Музыка"
+              value={music ? music.action : ""}
+              options={[
+                { value: "", label: "не менять" },
+                { value: "play", label: "включить трек" },
+                { value: "stop", label: "остановить (плавно затихнет)" },
+              ]}
+              onChange={(v) => setMusic(v ? { action: v as "play" | "stop", url: music?.url ?? null, loop: true, volume: 1, fadeMs: 800 } : null)}
+            />
+            {music?.action === "play" && (
+              <ImageUpload
+                kind="audio"
+                label="Трек (MP3, OGG, M4A, WAV)"
+                currentUrl={music.url}
+                onUploaded={(url) => setMusic({ ...music, url })}
+              />
+            )}
+          </div>
+          <div className="space-y-1">
+            <ImageUpload kind="audio" label="Звуковой эффект (прозвучит один раз)" currentUrl={sfxUrl} onUploaded={setSfxUrl} />
+            {sfxUrl && (
+              <button type="button" onClick={() => setSfxUrl(null)} className="text-xs text-red-600 underline">
+                Убрать звук
+              </button>
+            )}
+          </div>
+          <div className="space-y-1">
+            <ImageUpload
+              label="Иллюстрация на весь экран (CG) — показывается вместо персонажей"
+              currentUrl={cgImageUrl || null}
+              onUploaded={setCgImageUrl}
+            />
+            <div className="flex gap-3 text-xs">
+              <button type="button" onClick={() => setCgImageUrl("")} className="text-neutral-600 underline">
+                Скрыть иллюстрацию с этой реплики
+              </button>
+              <button type="button" onClick={() => setCgImageUrl(null)} className="text-neutral-600 underline">
+                Не менять
+              </button>
+              {cgImageUrl === "" && <span className="text-amber-700">с этой реплики иллюстрация будет скрыта</span>}
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <LabeledSelect label="Атмосфера" value={atmosphere} options={ATMOSPHERES} onChange={setAtmosphere} />
+            <LabeledSelect label="Эффект в момент реплики" value={screenEffect} options={SCREEN_EFFECTS} onChange={setScreenEffect} />
+            <LabeledSelect label="Переход к реплике" value={transition} options={TRANSITIONS} onChange={setTransition} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <LabeledSelect
+              label="Камера"
+              value={camera ? "set" : ""}
+              options={[
+                { value: "", label: "не менять" },
+                { value: "set", label: "задать кадр" },
+              ]}
+              onChange={(v) => setCamera(v ? { zoom: 1.2, focus: "center", durationMs: 900 } : null)}
+            />
+            {camera && (
+              <>
+                <label className="block text-xs text-neutral-600">
+                  Приближение: {camera.zoom.toFixed(2)}× {camera.zoom === 1 && camera.focus === "center" && "(обычный кадр)"}
+                  <input
+                    type="range"
+                    min={1}
+                    max={2}
+                    step={0.05}
+                    value={camera.zoom}
+                    onChange={(e) => setCamera({ ...camera, zoom: Number(e.target.value) })}
+                    className="mt-2 w-full"
+                  />
+                </label>
+                <LabeledSelect
+                  label="Куда смотрит камера"
+                  value={camera.focus}
+                  options={STAGE_POSITIONS.map((p) => ({ value: p.value, label: p.label }))}
+                  onChange={(v) => setCamera({ ...camera, focus: v as StagePosition })}
+                />
+              </>
+            )}
+          </div>
+        </div>
+      </details>
       <div>
         <label className="block text-xs text-neutral-600">Следующий узел</label>
         <NextNodeSelect value={nextNodeId} allNodes={allNodes} excludeNodeId={node.id} onChange={setNextNodeId} />
@@ -270,6 +459,13 @@ function DialogueForm({
             backgroundImageUrl,
             staged,
             nextNodeId,
+            music: music && (music.action === "stop" || music.url) ? music : null,
+            sfxUrl,
+            cgImageUrl,
+            atmosphere: atmosphere || null,
+            camera,
+            screenEffect: screenEffect || null,
+            transition: transition || null,
           })
         }
         className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
@@ -291,8 +487,10 @@ function ChoiceForm({
   onSave: (data: object) => void;
   onOptionsChanged: () => void;
 }) {
-  const data = node.data as { prompt?: { ru?: string } };
+  const data = node.data as { prompt?: { ru?: string }; timerSeconds?: number | null; timeoutOptionId?: string | null };
   const [promptRu, setPromptRu] = useState(data.prompt?.ru ?? "");
+  const [timerSeconds, setTimerSeconds] = useState<string>(data.timerSeconds ? String(data.timerSeconds) : "");
+  const [timeoutOptionId, setTimeoutOptionId] = useState<string>(data.timeoutOptionId ?? "");
   const [showCreateOption, setShowCreateOption] = useState(false);
 
   return (
@@ -304,8 +502,45 @@ function ChoiceForm({
           onChange={(e) => setPromptRu(e.target.value)}
           className="w-full rounded border border-neutral-300 px-2 py-1 text-sm"
         />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="block text-xs text-neutral-600">
+            Таймер, сек (пусто — без ограничения времени)
+            <input
+              type="number"
+              min={3}
+              max={120}
+              value={timerSeconds}
+              onChange={(e) => setTimerSeconds(e.target.value)}
+              className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+            />
+          </label>
+          {timerSeconds && (
+            <label className="block text-xs text-neutral-600">
+              Если время вышло, выбирается
+              <select
+                value={timeoutOptionId}
+                onChange={(e) => setTimeoutOptionId(e.target.value)}
+                className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+              >
+                <option value="">(выберите бесплатный вариант без условий)</option>
+                {node.choiceOptions
+                  .filter((o) => !o.costAmount && o.visibleWhen.length === 0)
+                  .map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.text.ru}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
+        </div>
         <button
-          onClick={() => onSave(promptRu ? { prompt: { ru: promptRu } } : {})}
+          onClick={() =>
+            onSave({
+              ...(promptRu ? { prompt: { ru: promptRu } } : {}),
+              ...(timerSeconds ? { timerSeconds: Number(timerSeconds), timeoutOptionId: timeoutOptionId || null } : {}),
+            })
+          }
           className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
         >
           Сохранить
@@ -664,8 +899,16 @@ function EffectForm({
 }
 
 function EndForm({ node, onSave }: { node: SceneNodeOut; onSave: (data: object) => void }) {
-  const data = node.data as { unlocksNextChapter?: boolean };
+  const data = node.data as {
+    unlocksNextChapter?: boolean;
+    endingKey?: string | null;
+    endingTitle?: { ru?: string } | null;
+    rewardSoft?: number;
+  };
   const [unlocksNextChapter, setUnlocksNextChapter] = useState(data.unlocksNextChapter !== false);
+  const [endingKey, setEndingKey] = useState(data.endingKey ?? "");
+  const [endingTitle, setEndingTitle] = useState(data.endingTitle?.ru ?? "");
+  const [rewardSoft, setRewardSoft] = useState(String(data.rewardSoft ?? 0));
 
   return (
     <div className="space-y-2">
@@ -677,8 +920,45 @@ function EndForm({ node, onSave }: { node: SceneNodeOut; onSave: (data: object) 
         />
         Открывает следующую главу
       </label>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <label className="block text-xs text-neutral-600">
+          Название финала (если их несколько)
+          <input
+            value={endingTitle}
+            onChange={(e) => setEndingTitle(e.target.value)}
+            placeholder="Например: «Примирение»"
+            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+          />
+        </label>
+        <label className="block text-xs text-neutral-600">
+          Ключ финала (латиницей, для коллекции)
+          <input
+            value={endingKey}
+            onChange={(e) => setEndingKey(e.target.value)}
+            placeholder="reconciliation"
+            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+          />
+        </label>
+        <label className="block text-xs text-neutral-600">
+          Награда монетами за первое прохождение
+          <input
+            type="number"
+            min={0}
+            value={rewardSoft}
+            onChange={(e) => setRewardSoft(e.target.value)}
+            className="mt-1 w-full rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+          />
+        </label>
+      </div>
       <button
-        onClick={() => onSave({ unlocksNextChapter })}
+        onClick={() =>
+          onSave({
+            unlocksNextChapter,
+            endingKey: endingKey.trim() || null,
+            endingTitle: endingTitle.trim() ? { ru: endingTitle.trim() } : null,
+            rewardSoft: Math.max(0, Number(rewardSoft) || 0),
+          })
+        }
         className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
       >
         Сохранить

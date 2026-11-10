@@ -101,11 +101,37 @@ export const variableDefinitionCreateSchema = z.object({
 });
 export type VariableDefinitionCreateInput = z.infer<typeof variableDefinitionCreateSchema>;
 
+// Stage-direction vocabularies - mirror the Literal types in apps/api/app/schemas/content.py.
+export const SPRITE_ANIMATIONS = ["none", "fade_in", "slide_in", "bounce", "shake", "nod", "lean_in"] as const;
+export const SCREEN_EFFECTS = ["shake", "flash", "heartbeat", "blur_in"] as const;
+export const ATMOSPHERES = ["none", "rain", "snow", "fog", "dust", "sparkles", "petals"] as const;
+export const SCENE_TRANSITIONS = ["none", "fade", "dissolve", "slide"] as const;
+
+export const musicCueSchema = z
+  .object({
+    action: z.enum(["play", "stop"]).default("play"),
+    url: z.string().nullable().optional(),
+    loop: z.boolean().default(true),
+    volume: z.number().min(0).max(1).default(1),
+    fadeMs: z.number().int().min(0).max(10000).default(800),
+  })
+  .refine((cue) => cue.action === "stop" || Boolean(cue.url), "Для запуска музыки нужно выбрать трек");
+export type MusicCue = z.infer<typeof musicCueSchema>;
+
+export const cameraCueSchema = z.object({
+  zoom: z.number().min(1).max(2).default(1),
+  focus: z.enum(["left", "center", "right"]).default("center"),
+  durationMs: z.number().int().min(0).max(10000).default(900),
+});
+export type CameraCue = z.infer<typeof cameraCueSchema>;
+
 /** One character standing on stage during a dialogue beat. */
 export const stagedCharacterSchema = z.object({
   characterId: z.string().uuid(),
   sprite: z.string().default("neutral"),
   position: z.enum(["left", "center", "right"]).default("center"),
+  /** One-shot entrance/reaction animation; purely presentational. */
+  animation: z.enum(SPRITE_ANIMATIONS).nullable().optional(),
 });
 export type StagedCharacter = z.infer<typeof stagedCharacterSchema>;
 
@@ -122,6 +148,15 @@ export const dialogueNodeDataSchema = z.object({
   backgroundImageUrl: z.string().url().nullable().optional(),
   staged: z.array(stagedCharacterSchema).default([]),
   nextNodeId: z.string().uuid().nullable().default(null),
+  // Stage directions: absent = keep what is already on stage.
+  music: musicCueSchema.nullable().optional(),
+  sfxUrl: z.string().nullable().optional(),
+  /** null = keep, "" = hide the CG. */
+  cgImageUrl: z.string().nullable().optional(),
+  atmosphere: z.enum(ATMOSPHERES).nullable().optional(),
+  camera: cameraCueSchema.nullable().optional(),
+  screenEffect: z.enum(SCREEN_EFFECTS).nullable().optional(),
+  transition: z.enum(SCENE_TRANSITIONS).nullable().optional(),
 });
 export type DialogueNodeData = z.infer<typeof dialogueNodeDataSchema>;
 
@@ -147,6 +182,8 @@ export type ChoiceOptionUpdateInput = z.infer<typeof choiceOptionUpdateSchema>;
 
 export const choiceNodeDataSchema = z.object({
   prompt: localizedTextSchema.optional(),
+  timerSeconds: z.number().int().min(3).max(120).nullable().optional(),
+  timeoutOptionId: z.string().uuid().nullable().optional(),
 });
 export type ChoiceNodeData = z.infer<typeof choiceNodeDataSchema>;
 
@@ -166,6 +203,10 @@ export type EffectNodeData = z.infer<typeof effectNodeDataSchema>;
 export const endNodeDataSchema = z.object({
   /** Marks the chapter complete and optionally unlocks the next chapter. */
   unlocksNextChapter: z.boolean().default(true),
+  endingKey: z.string().max(60).nullable().optional(),
+  endingTitle: localizedTextSchema.nullable().optional(),
+  /** Soft currency granted the first time the chapter is completed. */
+  rewardSoft: z.number().int().min(0).max(100000).default(0),
 });
 export type EndNodeData = z.infer<typeof endNodeDataSchema>;
 
