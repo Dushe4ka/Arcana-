@@ -11,6 +11,7 @@ from sqlalchemy import delete, select
 
 from app.core.security import hash_password
 from app.database import SessionLocal
+from app.devtools.engine_test_story import seed_engine_test_story
 from app.engine.condition_engine import variable_lookup_key
 from app.models.content import (
     Chapter,
@@ -572,6 +573,8 @@ async def main():
         await seed_admin_user(db)
         await seed_demo_story(db)
         await seed_cabinet_demo(db)
+        # Technical, staff-only story that exercises every engine feature (is_test=True).
+        await seed_engine_test_story(db)
     print("Seed complete.")
 
 

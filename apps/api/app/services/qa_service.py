@@ -28,23 +28,23 @@ async def _external_ids(db: AsyncSession, graph, chapter_id) -> set[str]:
     return {str(r) for r in rows}
 
 
-async def analyze_chapter(db: AsyncSession, chapter_id: str) -> Report:
-    chapter = await db.scalar(
-        select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
-    )
-    if not chapter:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена")
+async def _analyze(db: AsyncSession, chapter: Chapter, initial_states=None) -> Report:
     story_id = chapter.season.story_id
     entry_node_id = str(chapter.entry_node_id) if chapter.entry_node_id else None
     graph = await loader.load_chapter_graph(db, story_id, chapter.id)
     characters = await loader.load_characters(db, story_id)
     external = await _external_ids(db, graph, chapter.id)
     return narrative_qa.analyze_chapter(
-        graph, str(chapter.id), entry_node_id, characters, external_node_ids=external
+        graph,
+        str(chapter.id),
+        entry_node_id,
+        characters,
+        external_node_ids=external,
+        initial_states=initial_states,
     )
 
 
-async def analyze_story(db: AsyncSession, story_id: str) -> list[dict]:
+async def _story_chapters(db: AsyncSession, story_id) -> list[Chapter]:
     chapters = list(
         await db.scalars(
             select(Chapter)
@@ -54,20 +54,47 @@ async def analyze_story(db: AsyncSession, story_id: str) -> list[dict]:
         )
     )
     chapters.sort(key=lambda c: (c.season.index, c.index))
+    return chapters
+
+
+async def _chain(db: AsyncSession, story_id, stop_at=None) -> list[tuple[Chapter, Report]]:
+    """Analyses chapters in reading order, feeding each chapter the variable states players
+    can actually finish the previous one with - so "this ending is unreachable" in chapter 5
+    accounts for everything chapters 1-4 can set."""
     result = []
-    for chapter in chapters:
-        report = await analyze_chapter(db, str(chapter.id))
-        result.append(
-            {
-                "chapterId": str(chapter.id),
-                "seasonIndex": chapter.season.index,
-                "chapterIndex": chapter.index,
-                "title": chapter.title,
-                "status": chapter.status.value,
-                **report.to_json(),
-            }
-        )
+    carried = None
+    for chapter in await _story_chapters(db, story_id):
+        report = await _analyze(db, chapter, carried)
+        result.append((chapter, report))
+        if str(chapter.id) == str(stop_at):
+            break
+        # A chapter that cannot be finished contributes nothing; keep what we had.
+        carried = report.end_states or carried
     return result
+
+
+async def analyze_chapter(db: AsyncSession, chapter_id: str) -> Report:
+    chapter = await db.scalar(
+        select(Chapter).where(Chapter.id == chapter_id).options(selectinload(Chapter.season))
+    )
+    if not chapter:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Глава не найдена")
+    chain = await _chain(db, chapter.season.story_id, stop_at=chapter.id)
+    return chain[-1][1]
+
+
+async def analyze_story(db: AsyncSession, story_id: str) -> list[dict]:
+    return [
+        {
+            "chapterId": str(chapter.id),
+            "seasonIndex": chapter.season.index,
+            "chapterIndex": chapter.index,
+            "title": chapter.title,
+            "status": getattr(chapter.status, "value", chapter.status),
+            **report.to_json(),
+        }
+        for chapter, report in await _chain(db, story_id)
+    ]
 
 
 async def require_publishable(db: AsyncSession, chapter_id: str) -> None:

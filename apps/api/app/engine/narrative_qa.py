@@ -51,6 +51,9 @@ class Issue:
 class Report:
     issues: list[Issue] = field(default_factory=list)
     stats: dict = field(default_factory=dict)
+    # Distinct variable states players can finish this chapter with - the starting points
+    # for analysing the next chapter.
+    end_states: list[EngineState] = field(default_factory=list)
 
     @property
     def errors(self) -> list[Issue]:
@@ -83,9 +86,12 @@ def analyze_chapter(
     *,
     external_node_ids: set[str] | None = None,
     max_states: int = MAX_EXPLORED_STATES,
+    initial_states: list[EngineState] | None = None,
 ) -> Report:
     """`graph` must contain this chapter's nodes; `external_node_ids` are ids that exist in
-    other chapters (legal jump targets)."""
+    other chapters (legal jump targets). `initial_states` are the variable states players
+    can arrive with from earlier chapters; without them the chapter is explored from
+    default values only."""
     report = Report()
     external = external_node_ids or set()
     nodes = {nid: n for nid, n in graph.nodes.items() if n.chapter_id == str(chapter_id)}
@@ -124,7 +130,9 @@ def analyze_chapter(
         _check_endings(report, nodes, edges, reachable, external)
         _check_auto_cycles(report, nodes, edges, reachable)
 
-    exploration = _explore(graph, nodes, entry_node_id, report, max_states) if reachable else {}
+    exploration = (
+        _explore(graph, nodes, entry_node_id, report, max_states, initial_states) if reachable else {}
+    )
     report.stats = {
         "nodes": len(nodes),
         "reachableNodes": len(reachable),
@@ -424,8 +432,14 @@ def _freeze(node_id: str, state: EngineState) -> tuple:
     return (node_id, tuple(sorted((k, repr(v)) for k, v in state.values.items())))
 
 
-def _explore(graph: StoryGraph, nodes: dict, entry_node_id, report: Report, max_states: int) -> dict:
-    """Plays every branch reachable from the entry with default variable values."""
+MAX_CARRIED_STATES = 200
+
+
+def _explore(
+    graph: StoryGraph, nodes: dict, entry_node_id, report: Report, max_states: int, initial_states=None
+) -> dict:
+    """Plays every branch reachable from the entry, from each possible starting state."""
+    end_states: dict[tuple, EngineState] = {}
     visited_nodes: set[str] = set()
     taken_options: set[str] = set()
     endings: set[str] = set()
@@ -447,7 +461,8 @@ def _explore(graph: StoryGraph, nodes: dict, entry_node_id, report: Report, max_
             seen.add(key)
             queue.append((rest.node.id, rest.state))
 
-    step(str(entry_node_id), EngineState())
+    for initial in initial_states or [EngineState()]:
+        step(str(entry_node_id), EngineState(values=dict(initial.values)))
 
     while queue:
         if len(seen) > max_states:
@@ -457,6 +472,8 @@ def _explore(graph: StoryGraph, nodes: dict, entry_node_id, report: Report, max_
         node = nodes[node_id]
         if node.type == "END":
             endings.add(node_id)
+            if len(end_states) < MAX_CARRIED_STATES:
+                end_states.setdefault(_freeze("", state), EngineState(values=dict(state.values)))
         elif node.type == "DIALOGUE":
             if node.data.next_node_id:
                 step(node.data.next_node_id, state)
@@ -512,6 +529,7 @@ def _explore(graph: StoryGraph, nodes: dict, entry_node_id, report: Report, max_
             f"Вариантов прохождения слишком много - проверено {max_states} состояний, покрытие неполное",
         )
 
+    report.end_states = list(end_states.values())
     total = len(nodes)
     return {
         "exploredStates": len(seen),

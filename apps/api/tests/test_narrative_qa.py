@@ -322,3 +322,22 @@ async def test_entry_node_must_belong_to_the_chapter(client, make_user, auth_hea
     headers = auth_headers(await make_user("qa-writer@example.com", role="WRITER"))
     response = await client.patch(f"/api/admin/chapters/{mine.id}", headers=headers, json={"entryNodeId": str(foreign.id)})
     assert response.status_code == 400
+
+
+def test_states_carried_from_the_previous_chapter_unlock_branches():
+    """Chapter 2 gates an ending on a variable only chapter 1 can raise."""
+    chapter_two = [
+        node("start", "CONDITION", {"when": [{"variableKey": "love", "operator": "GTE", "value": 2}], "thenNodeId": "good", "elseNodeId": "bad"}),
+        node("good", "END"),
+        node("bad", "END"),
+    ]
+    alone = analyze(chapter_two, variables=[var("love")])
+    assert ("UNREACHABLE_ENDING", "good") in {(i.code, i.node_id) for i in alone.issues}
+
+    from app.engine.runtime import EngineState
+
+    carried = analyze(
+        chapter_two, variables=[var("love")], initial_states=[EngineState(), EngineState(values={"love::": 3})]
+    )
+    assert carried.issues == [] and carried.stats["reachableEndings"] == 2
+    assert sorted(s.values.get("love::", 0) for s in carried.end_states) == [0, 3]
