@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import AuthenticatedUser, get_current_user
@@ -7,6 +7,7 @@ from app.schemas.auth import (
     AuthResponse,
     CabinetExchangeInput,
     CabinetLinkTokenOut,
+    ChangePasswordInput,
     LoginInput,
     PublicUser,
     RefreshTokenInput,
@@ -24,8 +25,26 @@ async def register(body: RegisterInput, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(body: LoginInput, db: AsyncSession = Depends(get_db)):
-    return await auth_service.login(db, body)
+async def login(body: LoginInput, request: Request, db: AsyncSession = Depends(get_db)):
+    return await auth_service.login(db, body, client_ip=request.client.host if request.client else None)
+
+
+@router.post("/change-password", response_model=TokenPair)
+async def change_password(
+    body: ChangePasswordInput,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await auth_service.change_password(db, user.user_id, body)
+
+
+@router.post("/logout-all", status_code=status.HTTP_204_NO_CONTENT)
+async def logout_all(
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Signs this account out on every device."""
+    await auth_service.logout_everywhere(db, user.user_id)
 
 
 @router.post("/refresh", response_model=TokenPair)

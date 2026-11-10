@@ -76,13 +76,75 @@ export default function UsersPage() {
                 <p className="text-sm font-medium">{user.displayName}</p>
                 <p className="text-xs text-neutral-500">{user.email}</p>
               </div>
-              <span className="text-xs text-neutral-500">{ROLE_LABELS[user.role] ?? user.role}</span>
+              <div className="flex items-center gap-4">
+                <span className="text-xs text-neutral-500">{ROLE_LABELS[user.role] ?? user.role}</span>
+                <ResetPasswordButton user={user} />
+              </div>
             </li>
           ))}
           {users.length === 0 && <li className="px-4 py-3 text-neutral-500">Пока нет сотрудников</li>}
         </ul>
       )}
     </div>
+  );
+}
+
+function ResetPasswordButton({ user }: { user: StaffUserOut }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password.length < 8) {
+      setMessage("Минимум 8 символов");
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiRequest(`/admin/users/${user.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ newPassword: password }),
+      });
+      setPassword("");
+      setOpen(false);
+      setMessage("Пароль изменён. Сотрудник вышел из системы на всех устройствах.");
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : "Не удалось сбросить пароль");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div className="text-right">
+        <button onClick={() => { setOpen(true); setMessage(null); }} className="text-xs text-neutral-600 underline">
+          Сбросить пароль
+        </button>
+        {message && <p className="mt-1 max-w-56 text-xs text-neutral-500">{message}</p>}
+      </div>
+    );
+  }
+  return (
+    <form onSubmit={onSubmit} className="flex flex-wrap items-center justify-end gap-2">
+      <input
+        type="text"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Новый пароль"
+        aria-label={`Новый пароль для ${user.displayName}`}
+        className="w-40 rounded border border-neutral-300 px-2 py-1 text-sm"
+      />
+      <button type="submit" disabled={saving} className="rounded bg-neutral-900 px-2 py-1 text-xs text-white disabled:opacity-50">
+        {saving ? "Сохраняю…" : "Задать"}
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="text-xs text-neutral-600 underline">
+        Отмена
+      </button>
+      {message && <p className="w-full text-right text-xs text-red-600">{message}</p>}
+    </form>
   );
 }
 
@@ -147,8 +209,8 @@ function CreateStaffUserForm({ onCreated }: { onCreated: () => void }) {
           placeholder="Минимум 8 символов"
         />
         <p className="mt-1 text-xs text-neutral-500">
-          Передайте этот пароль сотруднику сами — сменить его можно только повторным созданием
-          аккаунта (смена пароля пока не реализована).
+          Передайте этот пароль сотруднику сами. Если он его забудет, задайте новый кнопкой
+          «Сбросить пароль» в списке сотрудников.
         </p>
       </div>
       <div>

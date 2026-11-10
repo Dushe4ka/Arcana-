@@ -3,9 +3,10 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import rate_limit
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -19,6 +20,7 @@ from app.models.enums import UserRole
 from app.models.user import CabinetLinkToken, PlayerProfile, RefreshToken, User
 from app.schemas.auth import (
     AuthResponse,
+    ChangePasswordInput,
     CreateStaffUserInput,
     LoginInput,
     PublicUser,
@@ -106,7 +108,7 @@ async def exchange_cabinet_link_token(db: AsyncSession, code: str) -> AuthRespon
 
 
 async def register(db: AsyncSession, data: RegisterInput) -> AuthResponse:
-    existing = await db.scalar(select(User).where(User.email == data.email))
+    existing = await _find_user_by_email(db, data.email)
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Пользователь с таким email уже зарегистрирован")
 
@@ -128,7 +130,7 @@ async def create_staff_user(db: AsyncSession, data: CreateStaffUserInput) -> Pub
     employee" screen. Gives the new account the same profile/wallet/daily-reward rows every
     user gets (mirrors register() and seed.py's seed_admin_user) so nothing downstream has to
     special-case a walletless account; staff simply never use the wallet-facing endpoints."""
-    existing = await db.scalar(select(User).where(User.email == data.email))
+    existing = await _find_user_by_email(db, data.email)
     if existing:
         raise HTTPException(status.HTTP_409_CONFLICT, "Пользователь с таким email уже зарегистрирован")
 
@@ -155,14 +157,75 @@ async def list_staff_users(db: AsyncSession) -> list[PublicUser]:
     return result
 
 
-async def login(db: AsyncSession, data: LoginInput) -> AuthResponse:
-    user = await db.scalar(select(User).where(User.email == data.email))
+async def _find_user_by_email(db: AsyncSession, email: str) -> User | None:
+    # Case-insensitive so accounts created before addresses were normalised still match.
+    return await db.scalar(select(User).where(func.lower(User.email) == email.lower()))
+
+
+async def revoke_all_sessions(db: AsyncSession, user_id) -> None:
+    """Ends every session of an account by deleting its refresh tokens outright. They are
+    deleted rather than marked revoked on purpose: a *revoked* row means "spent by rotation",
+    and seeing one again is treated as theft (see refresh) - an old device simply retrying
+    after a password change must get a plain 401, not trigger that alarm."""
+    await db.execute(delete(RefreshToken).where(RefreshToken.user_id == user_id))
+
+
+async def login(db: AsyncSession, data: LoginInput, client_ip: str | None = None) -> AuthResponse:
+    email_key = data.email.lower()
+    ip_key = client_ip or "unknown"
+    for limiter, key in ((rate_limit.login_by_email, email_key), (rate_limit.login_by_ip, ip_key)):
+        if limiter.is_blocked(key):
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                {
+                    "message": "Слишком много попыток входа. Попробуйте позже.",
+                    "retryAfterSeconds": limiter.retry_after(key),
+                },
+            )
+
+    user = await _find_user_by_email(db, data.email)
     if not user or not verify_password(user.password_hash, data.password):
+        rate_limit.login_by_email.hit(email_key)
+        rate_limit.login_by_ip.hit(ip_key)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверный email или пароль")
 
+    rate_limit.login_by_email.reset(email_key)
     display_name = await _get_display_name(db, user.id)
     tokens = await _issue_token_pair(db, user)
     return AuthResponse(user=_to_public_user(user, display_name), **tokens.model_dump())
+
+
+async def change_password(db: AsyncSession, user_id: str, data: ChangePasswordInput) -> TokenPair:
+    """Changing the password signs every other device out: all refresh tokens are revoked
+    and the caller gets one fresh pair."""
+    user = await db.get(User, user_id)
+    if not user or not verify_password(user.password_hash, data.current_password):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Текущий пароль указан неверно")
+    if data.new_password == data.current_password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Новый пароль должен отличаться от текущего")
+    user.password_hash = hash_password(data.new_password)
+    await revoke_all_sessions(db, user.id)
+    await db.commit()
+    return await _issue_token_pair(db, user)
+
+
+async def admin_reset_password(db: AsyncSession, target_user_id: str, new_password: str) -> None:
+    """ADMIN resets a staff member's password. Player accounts are out of scope on purpose:
+    an admin panel that can take over any player's account is a liability, not a feature."""
+    try:
+        user = await db.get(User, target_user_id)
+    except Exception as exc:  # noqa: BLE001 - malformed uuid
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден") from exc
+    if not user or user.role == UserRole.PLAYER:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден")
+    user.password_hash = hash_password(new_password)
+    await revoke_all_sessions(db, user.id)
+    await db.commit()
+
+
+async def logout_everywhere(db: AsyncSession, user_id: str) -> None:
+    await revoke_all_sessions(db, user_id)
+    await db.commit()
 
 
 async def refresh(db: AsyncSession, refresh_token: str) -> TokenPair:
@@ -170,15 +233,17 @@ async def refresh(db: AsyncSession, refresh_token: str) -> TokenPair:
     if payload is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Недействительный refresh-токен")
 
-    stored = await db.get(RefreshToken, payload["jti"])
+    stored = await db.scalar(select(RefreshToken).where(RefreshToken.id == payload["jti"]).with_for_update())
     token_hash = _hash_token(refresh_token)
     now = datetime.now(UTC)
-    if (
-        not stored
-        or stored.revoked_at is not None
-        or stored.expires_at < now
-        or stored.token_hash != token_hash
-    ):
+    if stored and stored.revoked_at is not None and stored.token_hash == token_hash:
+        # A refresh token is single-use. Seeing a spent one again means it was copied:
+        # either the thief or the owner is replaying it, and we cannot tell which - so
+        # every session of this account ends and the real owner signs in again.
+        await revoke_all_sessions(db, stored.user_id)
+        await db.commit()
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Сессия завершена из соображений безопасности")
+    if not stored or stored.expires_at < now or stored.token_hash != token_hash:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Refresh-токен отозван или истёк")
 
     # Rotate: revoke the used token and issue a fresh pair.

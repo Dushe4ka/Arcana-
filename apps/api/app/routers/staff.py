@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import require_roles
 from app.database import get_db
-from app.schemas.auth import CreateStaffUserInput, PublicUser
+from app.schemas.auth import CreateStaffUserInput, PublicUser, ResetPasswordInput
 from app.services import auth_service
 
 router = APIRouter(prefix="/admin", tags=["admin:staff"], dependencies=[Depends(require_roles("ADMIN"))])
@@ -21,3 +21,8 @@ async def list_staff_users(db: AsyncSession = Depends(get_db)):
 @router.post("/users", status_code=status.HTTP_201_CREATED, response_model=PublicUser)
 async def create_staff_user(body: CreateStaffUserInput, db: AsyncSession = Depends(get_db)):
     return await auth_service.create_staff_user(db, body)
+
+
+@router.post("/users/{user_id}/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+async def reset_staff_password(user_id: str, body: ResetPasswordInput, db: AsyncSession = Depends(get_db)):
+    await auth_service.admin_reset_password(db, user_id, body.new_password)

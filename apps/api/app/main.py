@@ -33,7 +33,7 @@ app = FastAPI(title="Arcana API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -91,7 +91,7 @@ app.include_router(staff.router, prefix="/api")
 # So `asgi_app` (not `app`) is what should actually be served - see CLAUDE.md.
 asgi_app = CORSMiddleware(
     app=app,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_methods=["*"],
     allow_headers=["*"],
 )

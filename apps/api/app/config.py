@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +29,24 @@ class Settings(BaseSettings):
     # Base URL of the player cabinet site (apps/cabinet, a separate plan) - used to build the
     # `return_url` YooKassa redirects back to after a payment completes.
     cabinet_base_url: str = "http://localhost:3100"
+    # Comma-separated browser origins allowed to call the API ("*" = any). Clients send a
+    # bearer token, never cookies, so "*" is not a CSRF risk - but naming the real admin and
+    # cabinet origins in production is still the tighter setting.
+    cors_origins: str = "*"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()] or ["*"]
+
+    @model_validator(mode="after")
+    def _strong_secrets_in_production(self):
+        if self.environment == "production":
+            for name in ("jwt_access_secret", "jwt_refresh_secret"):
+                if len(getattr(self, name)) < 32:
+                    raise ValueError(f"{name.upper()} must be at least 32 characters in production")
+            if self.jwt_access_secret == self.jwt_refresh_secret:
+                raise ValueError("JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must differ")
+        return self
 
 
 settings = Settings()

@@ -1,29 +1,52 @@
 from typing import Literal
 
-from pydantic import EmailStr, Field
+from pydantic import EmailStr, Field, field_validator
 
 from app.schemas.base import CamelModel
 
 
-class RegisterInput(CamelModel):
+def _normalize_email(value: str) -> str:
+    # One account per mailbox regardless of how the address was typed.
+    return value.strip().lower()
+
+
+class _EmailModel(CamelModel):
+    @field_validator("email", mode="after", check_fields=False)
+    @classmethod
+    def _lowercase_email(cls, value: str) -> str:
+        return _normalize_email(value)
+
+
+class RegisterInput(_EmailModel):
     email: EmailStr
-    password: str = Field(min_length=8, description="Минимум 8 символов")
+    password: str = Field(min_length=8, max_length=128, description="Минимум 8 символов")
     display_name: str = Field(min_length=2, max_length=40)
 
 
-class CreateStaffUserInput(CamelModel):
+class CreateStaffUserInput(_EmailModel):
     """ADMIN-only: create a WRITER/EDITOR/ADMIN account. PLAYER accounts are never created
     here - they go through the public POST /auth/register instead."""
 
     email: EmailStr
-    password: str = Field(min_length=8, description="Минимум 8 символов")
+    password: str = Field(min_length=8, max_length=128, description="Минимум 8 символов")
     display_name: str = Field(min_length=2, max_length=40)
     role: Literal["WRITER", "EDITOR", "ADMIN"]
 
 
-class LoginInput(CamelModel):
+class LoginInput(_EmailModel):
     email: EmailStr
     password: str = Field(min_length=1)
+
+
+class ChangePasswordInput(CamelModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=8, max_length=128, description="Минимум 8 символов")
+
+
+class ResetPasswordInput(CamelModel):
+    """ADMIN-only: set a new password for a staff account that lost access."""
+
+    new_password: str = Field(min_length=8, max_length=128, description="Минимум 8 символов")
 
 
 class RefreshTokenInput(CamelModel):
