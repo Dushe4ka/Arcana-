@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, UploadFile, status
+from pydantic import Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import require_roles
 from app.database import get_db
 from app.models.enums import ContentStatus
+from app.schemas.base import CamelModel
 from app.schemas.content import (
     ChapterCreateInput,
     ChapterUpdateInput,
@@ -19,7 +21,7 @@ from app.schemas.responses import (
     StoryOut,
     VariableUsageOut,
 )
-from app.services import qa_service, stories_service, variable_usage_service
+from app.services import import_service, qa_service, stories_service, variable_usage_service
 
 # Content-authoring endpoints for the admin panel. Every route here requires a
 # WRITER/EDITOR/ADMIN account - players never touch this router.
@@ -120,3 +122,33 @@ async def unpublish_chapter(chapter_id: str, db: AsyncSession = Depends(get_db))
 @router.delete("/chapters/{chapter_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_chapter(chapter_id: str, db: AsyncSession = Depends(get_db)):
     await stories_service.remove_chapter(db, chapter_id)
+
+
+# --- Screenplay import -------------------------------------------------------------------
+
+
+class ScriptImportInput(CamelModel):
+    text: str = Field(min_length=1, max_length=400_000)
+    # Speaker name as written in the script -> character id, "__create__" or "__narrator__".
+    speakers: dict[str, str] = Field(default_factory=dict)
+
+
+class ExtractedTextOut(CamelModel):
+    text: str
+
+
+@router.post("/import/extract-text", response_model=ExtractedTextOut)
+async def extract_script_text(file: UploadFile):
+    """Reads a DOCX/TXT/Markdown file and returns its plain text for the import editor."""
+    return ExtractedTextOut(text=await import_service.extract_text(file))
+
+
+@router.post("/chapters/{chapter_id}/import/preview")
+async def preview_script_import(chapter_id: str, body: ScriptImportInput, db: AsyncSession = Depends(get_db)):
+    """Parses the screenplay and reports what would be created. Saves nothing."""
+    return await import_service.preview(db, chapter_id, body.text)
+
+
+@router.post("/chapters/{chapter_id}/import", status_code=status.HTTP_201_CREATED)
+async def commit_script_import(chapter_id: str, body: ScriptImportInput, db: AsyncSession = Depends(get_db)):
+    return await import_service.commit(db, chapter_id, body.text, body.speakers)

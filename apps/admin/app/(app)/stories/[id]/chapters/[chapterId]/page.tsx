@@ -14,6 +14,7 @@ import { NarrativeQaPanel } from "@/components/NarrativeQaPanel";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
 import { SceneGraphView } from "@/components/SceneGraphView";
+import { ScriptImportPanel } from "@/components/ScriptImportPanel";
 import { VariableReferencesPanel } from "@/components/VariableReferencesPanel";
 
 // Task 3's read-side key (`play_service.py`/`preview_service.py` already look this variable up
@@ -31,7 +32,7 @@ export default function SceneEditorPage() {
   const [variableDefinitions, setVariableDefinitions] = useState<VariableDefinitionOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [view, setView] = useState<"list" | "graph" | "characters" | "variables" | "qa">("list");
+  const [view, setView] = useState<"list" | "graph" | "characters" | "variables" | "qa" | "import">("list");
 
   // `?view=graph&node=<id>` on initial load - written by `VariableReferencesPanel`'s "Перейти"
   // for a CROSS-chapter usage (a real navigation to this page), so a scenarist landing here from
@@ -653,6 +654,12 @@ export default function SceneEditorPage() {
         >
           Проверка сюжета
         </button>
+        <button
+          onClick={() => setView("import")}
+          className={view === "import" ? "font-semibold underline" : "text-neutral-600"}
+        >
+          Импорт сценария
+        </button>
       </div>
 
       {view === "list" && (
@@ -727,6 +734,7 @@ export default function SceneEditorPage() {
           onChanged={load}
         />
       )}
+      {view === "import" && <ScriptImportPanel chapterId={chapterId} characters={characters} onImported={load} />}
       {view === "qa" && (
         <NarrativeQaPanel
           chapterId={chapterId}
