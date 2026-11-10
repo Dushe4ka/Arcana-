@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +12,7 @@ from app.schemas.content import (
     StoryCreateInput,
     StoryUpdateInput,
 )
+from app.services import qa_service
 
 # --- Stories ---------------------------------------------------------------------------
 
@@ -70,15 +71,33 @@ async def create(db: AsyncSession, data: StoryCreateInput) -> Story:
 
 async def update(db: AsyncSession, story_id: str, data: StoryUpdateInput) -> Story:
     story = await _require_story(db, story_id)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    # Status changes always go through set_status so the publication checks cannot be
+    # skipped by sending `status` in a plain PATCH.
+    new_status = changes.pop("status", None)
+    for field, value in changes.items():
         setattr(story, field, value)
     await db.commit()
+    if new_status is not None and new_status != story.status.value:
+        return await set_status(db, story_id, ContentStatus(new_status))
     await db.refresh(story)
     return story
 
 
 async def set_status(db: AsyncSession, story_id: str, new_status: ContentStatus) -> Story:
     story = await _require_story(db, story_id)
+    if new_status == ContentStatus.PUBLISHED:
+        published_chapters = await db.scalar(
+            select(func.count())
+            .select_from(Chapter)
+            .join(Season, Chapter.season_id == Season.id)
+            .where(Season.story_id == story.id, Chapter.status == ContentStatus.PUBLISHED)
+        )
+        if not published_chapters:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "В истории нет ни одной опубликованной главы — игрокам нечего будет читать",
+            )
     story.status = new_status
     await db.commit()
     await db.refresh(story)
@@ -137,20 +156,32 @@ async def get_chapter(db: AsyncSession, chapter_id: str) -> Chapter:
 
 async def update_chapter(db: AsyncSession, chapter_id: str, data: ChapterUpdateInput) -> Chapter:
     chapter = await _require_chapter(db, chapter_id)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    changes = data.model_dump(exclude_unset=True)
+    new_status = changes.pop("status", None)
+    if changes.get("entry_node_id"):
+        entry = await db.get(SceneNode, changes["entry_node_id"])
+        if entry is None or entry.chapter_id != chapter.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Начальная сцена должна принадлежать этой главе")
+    for field, value in changes.items():
         setattr(chapter, field, value)
     await db.commit()
+    if new_status is not None and new_status != chapter.status.value:
+        return await set_chapter_status(db, chapter_id, ContentStatus(new_status))
     await db.refresh(chapter)
     return chapter
 
 
 async def set_chapter_status(db: AsyncSession, chapter_id: str, new_status: ContentStatus) -> Chapter:
     chapter = await _require_chapter(db, chapter_id)
-    if new_status == ContentStatus.PUBLISHED and not chapter.entry_node_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "У главы нет начальной сцены (entryNodeId) — нечего публиковать",
-        )
+    if new_status == ContentStatus.PUBLISHED:
+        if not chapter.entry_node_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "У главы нет начальной сцены (entryNodeId) — нечего публиковать",
+            )
+        # Narrative QA gate: a chapter with broken links, dead ends or soft locks never
+        # reaches players.
+        await qa_service.require_publishable(db, chapter_id)
     chapter.status = new_status
     await db.commit()
     await db.refresh(chapter)

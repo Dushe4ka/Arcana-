@@ -19,7 +19,7 @@ from app.schemas.responses import (
     StoryOut,
     VariableUsageOut,
 )
-from app.services import stories_service, variable_usage_service
+from app.services import qa_service, stories_service, variable_usage_service
 
 # Content-authoring endpoints for the admin panel. Every route here requires a
 # WRITER/EDITOR/ADMIN account - players never touch this router.
@@ -43,6 +43,18 @@ async def get_story(story_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/stories/{story_id}/variable-usages", response_model=list[VariableUsageOut])
 async def list_variable_usages(story_id: str, db: AsyncSession = Depends(get_db)):
     return await variable_usage_service.list_usages(db, story_id)
+
+
+@router.get("/stories/{story_id}/qa")
+async def story_qa(story_id: str, db: AsyncSession = Depends(get_db)):
+    """Narrative QA report for every chapter of a story."""
+    return await qa_service.analyze_story(db, story_id)
+
+
+@router.get("/chapters/{chapter_id}/qa")
+async def chapter_qa(chapter_id: str, db: AsyncSession = Depends(get_db)):
+    """Narrative QA report: what would break for players if this chapter were published."""
+    return (await qa_service.analyze_chapter(db, chapter_id)).to_json()
 
 
 @router.post("/stories", status_code=status.HTTP_201_CREATED, response_model=StoryOut)

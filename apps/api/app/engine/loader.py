@@ -15,7 +15,7 @@ def option_spec(option: ChoiceOption) -> OptionSpec:
         id=str(option.id),
         order=option.order,
         text=option.text,
-        cost_currency=option.cost_currency.value if option.cost_currency else None,
+        cost_currency=getattr(option.cost_currency, "value", option.cost_currency) or None,
         cost_amount=option.cost_amount or 0,
         visible_when=tuple(Condition.model_validate(c) for c in (option.visible_when or [])),
         effects=tuple(Effect.model_validate(e) for e in (option.effects or [])),
@@ -26,14 +26,15 @@ def option_spec(option: ChoiceOption) -> OptionSpec:
 def add_nodes(graph: StoryGraph, nodes: list[SceneNode]) -> None:
     for node in nodes:
         node_id = str(node.id)
+        node_type = getattr(node.type, "value", node.type)
         try:
-            data = parse_node_data(node.type.value, node.data)
+            data = parse_node_data(node_type, node.data)
             options = tuple(sorted((option_spec(o) for o in node.choice_options), key=lambda o: o.order))
         except Exception as exc:  # noqa: BLE001 - any malformed stored payload is a content error
             graph.broken[node_id] = str(exc)
             continue
         graph.nodes[node_id] = NodeSpec(
-            id=node_id, chapter_id=str(node.chapter_id), type=node.type.value, data=data, options=options
+            id=node_id, chapter_id=str(node.chapter_id), type=node_type, data=data, options=options
         )
 
 
