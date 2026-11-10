@@ -118,6 +118,22 @@ class PlayerEndingUnlock(Base, UUIDPKMixin):
     unlocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class PlayerCgUnlock(Base, UUIDPKMixin):
+    """A full-screen illustration (CG) this player has seen - what the gallery shows."""
+
+    __tablename__ = "player_cg_unlocks"
+    __table_args__ = (UniqueConstraint("user_id", "image_url"),)
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    story_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stories.id", ondelete="CASCADE")
+    )
+    image_url: Mapped[str] = mapped_column(String)
+    unlocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class Favorite(Base, UUIDPKMixin):
     __tablename__ = "favorites"
     __table_args__ = (UniqueConstraint("user_id", "story_id"),)

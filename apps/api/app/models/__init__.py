@@ -13,6 +13,7 @@ from app.models.content import (  # noqa: F401
 from app.models.economy import CurrencyTransaction, DailyRewardState, Purchase, Wallet  # noqa: F401
 from app.models.player import (  # noqa: F401
     Favorite,
+    PlayerCgUnlock,
     PlayerChapterCompletion,
     PlayerChapterUnlock,
     PlayerChoiceUnlock,

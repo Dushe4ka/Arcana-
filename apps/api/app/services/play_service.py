@@ -34,6 +34,7 @@ from app.engine.runtime import EngineError, EngineState, RestPoint, StoryGraph
 from app.models.content import Chapter, ChoiceOption, SceneNode, Season, Story
 from app.models.enums import ContentStatus, TransactionType
 from app.models.player import (
+    PlayerCgUnlock,
     PlayerChapterCompletion,
     PlayerChapterUnlock,
     PlayerChoiceUnlock,
@@ -394,6 +395,14 @@ async def _arrive(
     if rest.node.type == "DIALOGUE":
         box.push_path(rest.node.id)
     _save(slot, box)
+    cg_url = rest.state.stage.get("cgUrl")
+    if cg_url:
+        # Seen once = kept in the gallery for good, whatever happens to this playthrough.
+        await db.execute(
+            pg_insert(PlayerCgUnlock)
+            .values(user_id=user_id, story_id=slot.story_id, image_url=cg_url)
+            .on_conflict_do_nothing(index_elements=["user_id", "image_url"])
+        )
     if rest.node.type == "END":
         return await _complete_chapter(db, user_id, slot, rest)
     return None

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,6 +60,7 @@ class Wallet(Base, UUIDPKMixin):
 
 class CurrencyTransaction(Base, UUIDPKMixin):
     __tablename__ = "currency_transactions"
+    __table_args__ = (Index("ix_currency_transactions_user_created", "user_id", "created_at"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True

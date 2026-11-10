@@ -187,3 +187,43 @@ async def claim_daily_reward(db: AsyncSession, user_id: str) -> dict:
     await db.commit()
 
     return {"streak": next_streak, "reward": reward}
+
+
+_REASON_LABELS = {
+    "choice": "Платный выбор",
+    "chapter_complete": "Награда за главу",
+    "yookassa": "Покупка кристаллов",
+    "daily_reward_day": "Ежедневная награда",
+}
+
+
+def _reason_label(reason: str) -> str:
+    for prefix, label in _REASON_LABELS.items():
+        if reason.startswith(prefix):
+            return label
+    return "Операция"
+
+
+async def list_transactions(
+    db: AsyncSession, user_id: str, *, limit: int = 30, before: datetime | None = None
+) -> dict:
+    query = select(CurrencyTransaction).where(CurrencyTransaction.user_id == user_id)
+    if before is not None:
+        query = query.where(CurrencyTransaction.created_at < before)
+    rows = list(await db.scalars(query.order_by(CurrencyTransaction.created_at.desc()).limit(limit + 1)))
+    page = rows[:limit]
+    return {
+        "items": [
+            {
+                "id": str(t.id),
+                "currency": t.currency.value,
+                # Signed from the player's point of view: spending is negative.
+                "amount": -t.amount if t.type == TransactionType.SPEND else t.amount,
+                "type": t.type.value,
+                "label": _reason_label(t.reason),
+                "createdAt": t.created_at.isoformat(),
+            }
+            for t in page
+        ],
+        "nextBefore": page[-1].created_at.isoformat() if len(rows) > limit else None,
+    }

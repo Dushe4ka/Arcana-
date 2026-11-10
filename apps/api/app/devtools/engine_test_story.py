@@ -62,7 +62,9 @@ def _assets() -> dict[str, str]:
 
 class _Builder:
     def __init__(self, db, chapter: Chapter, prefix: str):
-        self.db, self.chapter, self.prefix, self.order = db, chapter, prefix, 0
+        # Nodes are created back to front (targets first), so count the order down to list
+        # them in reading order in the editor.
+        self.db, self.chapter, self.prefix, self.order = db, chapter, prefix, 1000
 
     def node(self, name: str, node_type: str, **data) -> uuid.UUID:
         node_id = _id(f"{self.prefix}:{name}")
@@ -70,7 +72,7 @@ class _Builder:
         self.db.add(
             SceneNode(id=node_id, chapter_id=self.chapter.id, type=node_type, order=self.order, data=clean)
         )
-        self.order += 1
+        self.order -= 1
         return node_id
 
     def say(self, name: str, text: str, next_node=None, **data) -> uuid.UUID:
