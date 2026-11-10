@@ -77,8 +77,8 @@ async def load_chapter_graph(db: AsyncSession, story_id, chapter_id) -> StoryGra
 
 
 async def extend_with_node_chapter(db: AsyncSession, graph: StoryGraph, node_id: str) -> bool:
-    """Loads the chapter that owns `node_id` into `graph` (a jump across chapters). Returns
-    False if that node does not exist at all."""
+    """Loads the whole chapter that owns `node_id` into `graph` (author preview jumping
+    across chapters). Returns False if that node does not exist at all."""
     try:
         chapter_id = await db.scalar(select(SceneNode.chapter_id).where(SceneNode.id == node_id))
     except Exception:  # noqa: BLE001 - e.g. a malformed uuid stored in node data
@@ -87,6 +87,44 @@ async def extend_with_node_chapter(db: AsyncSession, graph: StoryGraph, node_id:
         return False
     add_nodes(graph, await load_chapter_nodes(db, chapter_id))
     return True
+
+
+async def extend_with_nodes(db: AsyncSession, graph: StoryGraph, node_ids: list[str]) -> bool:
+    """Loads just the given nodes (with their choice options). The live reader uses this
+    instead of loading a whole chapter: one tap touches two or three nodes, and a chapter
+    can hold thousands. Returns False if none of them exist."""
+    wanted = [n for n in node_ids if n and n not in graph.nodes and n not in graph.broken]
+    if not wanted:
+        return True
+    try:
+        nodes = list(
+            await db.scalars(
+                select(SceneNode)
+                .where(SceneNode.id.in_(wanted))
+                .options(selectinload(SceneNode.choice_options))
+            )
+        )
+    except Exception:  # noqa: BLE001 - a malformed uuid stored as a jump target
+        return False
+    add_nodes(graph, nodes)
+    return bool(nodes)
+
+
+def successors(graph: StoryGraph, node_id: str) -> list[str]:
+    """Direct jump targets of an already loaded node - what the reader will need next."""
+    node = graph.nodes.get(node_id)
+    if node is None:
+        return []
+    data = node.data
+    if node.type in ("DIALOGUE", "EFFECT"):
+        targets = [data.next_node_id]
+    elif node.type == "CONDITION":
+        targets = [data.then_node_id, data.else_node_id]
+    elif node.type == "CHOICE":
+        targets = [o.next_node_id for o in node.options]
+    else:
+        targets = []
+    return [str(t) for t in targets if t]
 
 
 async def load_characters(db: AsyncSession, story_id) -> dict[str, dict]:

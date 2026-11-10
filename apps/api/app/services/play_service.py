@@ -46,7 +46,6 @@ STAFF_ROLES = {"WRITER", "EDITOR", "ADMIN"}
 CHAPTER_COMPLETE_XP = 50
 MAX_HISTORY = 30
 MAX_PATH = 300
-_MAX_CHAPTER_HOPS = 4
 
 _ERROR_STATUS = {
     "MISSING_NODE": status.HTTP_404_NOT_FOUND,
@@ -89,7 +88,7 @@ async def start_chapter(
         )
         .with_for_update()
     )
-    graph = await loader.load_chapter_graph(db, story_id, chapter.id)
+    graph = StoryGraph(nodes={}, variables=await loader.load_variables(db, story_id))
 
     if slot is None:
         slot = await _create_slot(db, user_id, story_id, slot_index)
@@ -348,27 +347,28 @@ def _is_stale(slot: SaveSlot, expected_node_id: str | None) -> bool:
 
 
 async def _run(db: AsyncSession, graph: StoryGraph, state: EngineState, node_id: str | None) -> RestPoint:
-    """`runtime.run_until_rest`, plus loading other chapters on demand when the story jumps
-    across a chapter boundary. The runtime is pure, so simply re-running is safe."""
-    for _ in range(_MAX_CHAPTER_HOPS):
+    """`runtime.run_until_rest` over a lazily loaded graph: whenever the runtime asks for a
+    node that is not in memory yet, fetch it (plus its direct successors, which the walk
+    will almost certainly need next) and run again. The runtime is pure, so re-running
+    from the same state is safe."""
+    for _ in range(runtime.MAX_AUTO_TRAVERSAL_STEPS + 2):
         try:
             return runtime.run_until_rest(graph, state, node_id)
         except EngineError as exc:
             if exc.code == "MISSING_NODE" and exc.node_id and exc.node_id not in graph.broken:
-                if await loader.extend_with_node_chapter(db, graph, exc.node_id):
-                    continue
+                if await loader.extend_with_nodes(db, graph, [exc.node_id]):
+                    if exc.node_id in graph.nodes:
+                        await loader.extend_with_nodes(db, graph, loader.successors(graph, exc.node_id))
+                        continue
             raise _http_error(exc) from exc
-    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Слишком длинная цепочка переходов между главами")
+    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Слишком длинная цепочка автоматических переходов")
 
 
 async def _open(db: AsyncSession, slot: SaveSlot) -> tuple[StoryGraph, _StateBox, RestPoint]:
     """Loads the slot's chapter graph and re-derives the resting point the player is at."""
     if not slot.current_node_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "У этого сохранения нет текущей сцены")
-    if slot.chapter_id:
-        graph = await loader.load_chapter_graph(db, slot.story_id, slot.chapter_id)
-    else:
-        graph = StoryGraph(nodes={}, variables=await loader.load_variables(db, slot.story_id))
+    graph = StoryGraph(nodes={}, variables=await loader.load_variables(db, slot.story_id))
     box = _StateBox(slot.state)
     here = await _run(db, graph, box.engine_state(), str(slot.current_node_id))
     return graph, box, here
