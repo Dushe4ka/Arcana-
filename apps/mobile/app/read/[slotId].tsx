@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   ImageBackground,
   Pressable,
   StyleSheet,
@@ -23,6 +24,16 @@ export default function ReadingScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Fade the box out before swapping content, then fade the new content in — a tap never
+  // just snaps text in place. Kept short (120/150ms) so it still reads as instant.
+  const boxOpacity = useRef(new Animated.Value(1)).current;
+  const fadeBox = useCallback(
+    (toValue: number, duration: number) =>
+      new Promise<void>((resolve) => {
+        Animated.timing(boxOpacity, { toValue, duration, useNativeDriver: true }).start(() => resolve());
+      }),
+    [boxOpacity],
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -41,12 +52,14 @@ export default function ReadingScreen() {
   const advance = async () => {
     if (view?.type !== "DIALOGUE" || !view.canAdvance || busy) return;
     setBusy(true);
+    await fadeBox(0, 120);
     try {
       const data = await apiRequest<PlayView>(`/play/save-slots/${slotId}/advance`, { method: "POST" });
       setView(data);
     } catch (err) {
       Alert.alert("Ошибка", err instanceof ApiError ? err.message : "Попробуйте ещё раз");
     } finally {
+      await fadeBox(1, 150);
       setBusy(false);
     }
   };
@@ -54,6 +67,7 @@ export default function ReadingScreen() {
   const choose = async (choiceOptionId: string) => {
     if (busy) return;
     setBusy(true);
+    await fadeBox(0, 120);
     try {
       const data = await apiRequest<PlayView>(`/play/save-slots/${slotId}/choice`, {
         method: "POST",
@@ -63,6 +77,7 @@ export default function ReadingScreen() {
     } catch (err) {
       Alert.alert("Не получилось", err instanceof ApiError ? err.message : "Попробуйте ещё раз");
     } finally {
+      await fadeBox(1, 150);
       setBusy(false);
     }
   };
@@ -106,20 +121,22 @@ export default function ReadingScreen() {
         )}
 
         <SafeAreaView style={styles.foreground} edges={["bottom"]}>
-          {view.type === "DIALOGUE" && (
-            <Pressable style={styles.tapArea} onPress={advance} disabled={!view.canAdvance || busy}>
-              <DialogueBox view={view} busy={busy} />
-            </Pressable>
-          )}
+          <Animated.View style={{ opacity: boxOpacity }}>
+            {view.type === "DIALOGUE" && (
+              <Pressable style={styles.tapArea} onPress={advance} disabled={!view.canAdvance || busy}>
+                <DialogueBox view={view} busy={busy} />
+              </Pressable>
+            )}
 
-          {view.type === "CHOICE" && <ChoicePanel view={view} busy={busy} onChoose={choose} />}
+            {view.type === "CHOICE" && <ChoicePanel view={view} busy={busy} onChoose={choose} />}
 
-          {view.type === "END" && (
-            <View style={styles.endPanel}>
-              <Text style={styles.endTitle}>Конец главы</Text>
-              <Button title="К списку глав" onPress={() => router.back()} />
-            </View>
-          )}
+            {view.type === "END" && (
+              <View style={styles.endPanel}>
+                <Text style={styles.endTitle}>Конец главы</Text>
+                <Button title="К списку глав" onPress={() => router.back()} />
+              </View>
+            )}
+          </Animated.View>
         </SafeAreaView>
       </ImageBackground>
     </View>
@@ -238,12 +255,19 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     paddingBottom: 20,
   },
-  sprite: { width: "34%", height: "78%" },
-  spriteLeft: { alignSelf: "flex-start" },
+  // Scaled by the sprite's own 2000×4600 canvas aspect ratio, at 90% of the stage's
+  // height — not an arbitrary box. Width follows from the aspect ratio automatically.
+  sprite: { height: "90%", aspectRatio: 2000 / 4600 },
+  spriteLeft: { alignSelf: "flex-start", marginLeft: "-8%" },
   spriteCenter: { alignSelf: "center" },
-  spriteRight: { alignSelf: "flex-end" },
-  foreground: { justifyContent: "flex-end" },
-  tapArea: { paddingHorizontal: 16, paddingBottom: 16 },
+  // Pushed past the flush-right edge: the subject isn't drawn flush to its own canvas
+  // edge, so flush positioning alone still reads as centered. The screen already crops
+  // overflow, so this is safe the same way the removed leg-crop line was.
+  spriteRight: { alignSelf: "flex-end", marginRight: "-8%" },
+  // Anchored above the waist line's on-screen position (56% was waist-level itself, read
+  // as too low) — overlays the character's lower chest/waist instead of pushing it up.
+  foreground: { position: "absolute", left: 0, right: 0, top: "51%", justifyContent: "flex-end" },
+  tapArea: { paddingHorizontal: 16, paddingBottom: 32 },
   dialogueBox: {
     backgroundColor: "rgba(20,16,28,0.92)",
     borderRadius: radius.lg,
@@ -253,9 +277,9 @@ const styles = StyleSheet.create({
     minHeight: 120,
     gap: 8,
   },
-  dialogueBoxLeft: { width: "78%", alignSelf: "flex-start" },
+  dialogueBoxLeft: { width: "94%", alignSelf: "flex-start" },
   dialogueBoxCenter: { width: "100%", alignSelf: "center" },
-  dialogueBoxRight: { width: "78%", alignSelf: "flex-end" },
+  dialogueBoxRight: { width: "94%", alignSelf: "flex-end" },
   thoughtBox: {
     borderColor: colors.accentMuted,
     borderStyle: "dashed",

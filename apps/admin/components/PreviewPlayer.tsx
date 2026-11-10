@@ -24,6 +24,11 @@ export function PreviewPlayer({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showVariables, setShowVariables] = useState(false);
+  // Fade the box out before swapping content, then fade the new content in — a tap never
+  // just snaps text in place. Kept short (150ms each way) so it still reads as instant.
+  const [boxVisible, setBoxVisible] = useState(true);
+  const FADE_MS = 150;
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const current = history.length > 0 ? history[history.length - 1] : null;
 
@@ -54,6 +59,8 @@ export function PreviewPlayer({
     if (!current || current.view.type !== "DIALOGUE" || !current.view.canAdvance || busy) return;
     setError(null);
     setBusy(true);
+    setBoxVisible(false);
+    await sleep(FADE_MS);
     try {
       const data = await apiRequest<PreviewStepOut>(`/admin/preview/chapters/${chapterId}`, {
         method: "POST",
@@ -67,6 +74,7 @@ export function PreviewPlayer({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось перейти дальше");
     } finally {
+      setBoxVisible(true);
       setBusy(false);
     }
   };
@@ -75,6 +83,8 @@ export function PreviewPlayer({
     if (!current || current.view.type !== "CHOICE" || busy) return;
     setError(null);
     setBusy(true);
+    setBoxVisible(false);
+    await sleep(FADE_MS);
     try {
       const data = await apiRequest<PreviewStepOut>(`/admin/preview/chapters/${chapterId}/choose`, {
         method: "POST",
@@ -89,6 +99,7 @@ export function PreviewPlayer({
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось выполнить выбор");
     } finally {
+      setBoxVisible(true);
       setBusy(false);
     }
   };
@@ -161,14 +172,19 @@ export function PreviewPlayer({
           <div className="absolute inset-0 bg-black/25" />
 
           {current?.view.type === "DIALOGUE" && (
-            <div className="absolute inset-x-0 bottom-[18%] h-[60%]">
+            <div className="absolute inset-0">
               {current.view.staged.map((s) => (
                 <StagedSprite key={s.characterId} staged={s} />
               ))}
             </div>
           )}
 
-          <div className="absolute inset-x-0 bottom-0 p-3">
+          {/* Anchored above the waist line's on-screen position (56% was waist-level
+              itself, read as too low) — overlays the character's lower chest/waist. */}
+          <div
+            className={`absolute inset-x-0 p-3 pb-8 transition-opacity ease-out ${boxVisible ? "opacity-100" : "opacity-0"}`}
+            style={{ top: "51%", transitionDuration: `${FADE_MS}ms` }}
+          >
             {!current && !error && <p className="text-center text-sm text-neutral-300">Загрузка…</p>}
             {current?.view.type === "DIALOGUE" && (
               <DialogueBox view={current.view} onAdvance={advance} busy={busy} />
@@ -188,13 +204,18 @@ function StagedSprite({ staged }: { staged: StagedCharacterView }) {
   if (!staged.spriteUrl) return null;
   const posClass =
     staged.position === "left"
-      ? "left-0"
+      ? "left-[-8%]"
       : staged.position === "right"
-        ? "right-0"
+        ? "right-[-8%]"
         : "left-1/2 -translate-x-1/2";
   return (
     // eslint-disable-next-line @next/next/no-img-element -- arbitrary uploaded-file URLs, not a static local asset next/image can optimize
-    <img src={staged.spriteUrl} alt="" className={`absolute bottom-0 h-full w-[34%] object-contain ${posClass}`} />
+    <img
+      src={staged.spriteUrl}
+      alt=""
+      className={`absolute bottom-0 h-[90%] object-contain ${posClass}`}
+      style={{ aspectRatio: "2000 / 4600" }}
+    />
   );
 }
 
@@ -207,7 +228,7 @@ function resolveBoxPosition(
   // Speaking but no matching staged entry: per spec, falls back to centered full-width,
   // same as the narrator ("рамка не найдёт совпадения по characterId и по умолчанию
   // встаёт по центру, как рассказчик") - also keeps pre-existing chapters (empty/mismatched
-  // `staged`) rendering as they always did, instead of jumping to a 78%-wide anchored box.
+  // `staged`) rendering as they always did, instead of jumping to a 94%-wide anchored box.
   return own?.position ?? "center";
 }
 
@@ -223,9 +244,9 @@ function DialogueBox({
   const boxPosition = resolveBoxPosition(view.speaker, view.staged);
   const posClass =
     boxPosition === "left"
-      ? "mr-auto w-[78%]"
+      ? "mr-auto w-[94%]"
       : boxPosition === "right"
-        ? "ml-auto w-[78%]"
+        ? "ml-auto w-[94%]"
         : "w-full";
   return (
     <button
