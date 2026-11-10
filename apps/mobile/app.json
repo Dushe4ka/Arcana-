@@ -10,7 +10,8 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      ["expo-audio", { "microphonePermission": false }]
     ],
     "ios": {
       "supportsTablet": true,

@@ -100,13 +100,34 @@ export type CharacterTag = {
   nameColor: string;
 };
 
+export type SpriteAnimation = "none" | "fade_in" | "slide_in" | "bounce" | "shake" | "nod" | "lean_in";
+
 export type StagedCharacterView = {
   characterId: string;
   name: LocalizedText;
   nameColor: string;
   spriteUrl: string | null;
   position: "left" | "center" | "right";
+  animation: SpriteAnimation | null;
 };
+
+/** What is on stage right now. The first five fields persist from beat to beat on the
+ * server (so a resumed save restores them); the optional ones are one-shot cues of the
+ * beat being shown. Mirrors apps/api/app/engine/views.py. */
+export type StageView = {
+  backgroundUrl: string | null;
+  music: { url: string; loop: boolean; volume: number } | null;
+  atmosphere: "rain" | "snow" | "fog" | "dust" | "sparkles" | "petals" | null;
+  camera: { zoom: number; focus: "left" | "center" | "right" } | null;
+  cgUrl: string | null;
+  sfxUrl?: string;
+  screenEffect?: "shake" | "flash" | "heartbeat" | "blur_in";
+  transition?: "none" | "fade" | "dissolve" | "slide";
+  musicFadeMs?: number;
+  cameraDurationMs?: number;
+};
+
+export type PlaySaveSlot = SaveSlot & { canRollback: boolean };
 
 export type DialogueView = {
   type: "DIALOGUE";
@@ -117,7 +138,8 @@ export type DialogueView = {
   backgroundImageUrl: string | null;
   staged: StagedCharacterView[];
   canAdvance: boolean;
-  saveSlot: SaveSlot;
+  stage: StageView;
+  saveSlot: PlaySaveSlot;
 };
 
 export type ChoiceOptionView = {
@@ -126,6 +148,8 @@ export type ChoiceOptionView = {
   costCurrency: "SOFT" | "HARD" | null;
   costAmount: number;
   affordable: boolean;
+  /** Bought on an earlier playthrough - choosing it again costs nothing. */
+  owned: boolean;
 };
 
 export type ChoiceView = {
@@ -133,15 +157,42 @@ export type ChoiceView = {
   nodeId: string;
   prompt: LocalizedText | null;
   options: ChoiceOptionView[];
-  saveSlot: SaveSlot;
+  timerSeconds: number | null;
+  timeoutOptionId: string | null;
+  backgroundImageUrl: string | null;
+  stage: StageView;
+  saveSlot: PlaySaveSlot;
 };
 
 export type EndView = {
   type: "END";
-  saveSlot: SaveSlot;
+  nodeId: string;
+  endingKey: string | null;
+  endingTitle: LocalizedText | null;
+  stage: StageView;
+  rewards: { firstCompletion: boolean; xp: number; soft: number };
+  nextChapter: {
+    id: string;
+    index: number;
+    seasonIndex: number;
+    title: LocalizedText;
+    unlockCost: number;
+    unlocked: boolean;
+  } | null;
+  saveSlot: PlaySaveSlot;
 };
 
 export type PlayView = DialogueView | ChoiceView | EndView;
+
+export type HistoryEntry =
+  | {
+      type: "DIALOGUE";
+      nodeId: string;
+      speaker: { name: LocalizedText; nameColor: string } | null;
+      text: LocalizedText;
+      isThought: boolean;
+    }
+  | { type: "CHOICE"; nodeId: string; text: LocalizedText };
 
 export type DailyRewardClaim = {
   streak: number;

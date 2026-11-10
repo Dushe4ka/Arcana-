@@ -3,30 +3,62 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  ImageBackground,
+  AppState,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
+  Vibration,
   View,
 } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Button } from "../../components/Button";
+import { Atmosphere } from "../../components/reader/Atmosphere";
+import { DialogueLog } from "../../components/reader/DialogueLog";
+import { ReaderSettingsSheet } from "../../components/reader/ReaderSettingsSheet";
+import { ReaderToolbar, type ToolbarAction } from "../../components/reader/ReaderToolbar";
+import { StageSprite } from "../../components/reader/StageSprite";
+import { useTypewriter } from "../../components/reader/useTypewriter";
 import { apiRequest, ApiError } from "../../lib/api";
+import { audioEngine } from "../../lib/audio";
 import { t } from "../../lib/locale";
-import { colors, radius } from "../../lib/theme";
-import type { PlayView, StagedCharacterView } from "../../lib/types";
+import { useReaderSettings } from "../../lib/reader-settings";
+import { colors, fonts, radius } from "../../lib/theme";
+import type { ChoiceOptionView, ChoiceView, DialogueView, EndView, PlayView } from "../../lib/types";
+import { useWalletStore } from "../../lib/wallet-store";
+
+const SKIP_INTERVAL_MS = 90;
 
 export default function ReadingScreen() {
   const { slotId } = useLocalSearchParams<{ slotId: string }>();
+  const settings = useReaderSettings();
+  const hydrateSettings = settings.hydrate;
+  const refreshWallet = useWalletStore((s) => s.fetch);
+
   const [view, setView] = useState<PlayView | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Fade the box out before swapping content, then fade the new content in — a tap never
-  // just snaps text in place. Kept short (120/150ms) so it still reads as instant.
+  const [uiHidden, setUiHidden] = useState(false);
+  const [auto, setAuto] = useState(false);
+  const [skipping, setSkipping] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Kept in a ref as well, so timers always act on the view that is on screen right now.
+  const viewRef = useRef<PlayView | null>(null);
+  const busyRef = useRef(false);
+
   const boxOpacity = useRef(new Animated.Value(1)).current;
+  const shake = useRef(new Animated.Value(0)).current;
+  const flash = useRef(new Animated.Value(0)).current;
+  const dip = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(1)).current;
+  const cameraZoom = useRef(new Animated.Value(1)).current;
+  const cameraPan = useRef(new Animated.Value(0)).current;
+
   const fadeBox = useCallback(
     (toValue: number, duration: number) =>
       new Promise<void>((resolve) => {
@@ -35,56 +67,208 @@ export default function ReadingScreen() {
     [boxOpacity],
   );
 
+  /** Applies everything a freshly received view asks of the stage: music, one-shot
+   * sound/screen effects and camera framing. */
+  const present = useCallback(
+    (next: PlayView, { quiet = false }: { quiet?: boolean } = {}) => {
+      viewRef.current = next;
+      setView(next);
+      const stage = next.stage;
+      const s = useReaderSettings.getState();
+      audioEngine.syncMusic(stage.music, stage.musicFadeMs ?? 800);
+      if (quiet) return; // fast-skipping: keep state in sync, play no one-shot effects
+      if (stage.sfxUrl) audioEngine.playSfx(stage.sfxUrl);
+
+      const camera = stage.camera;
+      const duration = s.reduceMotion ? 0 : (stage.cameraDurationMs ?? 900);
+      Animated.parallel([
+        Animated.timing(cameraZoom, {
+          toValue: s.reduceMotion ? 1 : (camera?.zoom ?? 1),
+          duration,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(cameraPan, {
+          toValue: s.reduceMotion || !camera ? 0 : camera.focus === "left" ? 1 : camera.focus === "right" ? -1 : 0,
+          duration,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      if (stage.transition === "fade" && !s.reduceMotion) {
+        dip.setValue(1);
+        Animated.timing(dip, { toValue: 0, duration: 520, useNativeDriver: true }).start();
+      }
+      const effect = stage.screenEffect;
+      if (!effect) return;
+      if (s.vibration && (effect === "shake" || effect === "heartbeat")) {
+        Vibration.vibrate(effect === "shake" ? 60 : [0, 40, 120, 40]);
+      }
+      if (s.reduceMotion) return;
+      if (effect === "shake") {
+        Animated.sequence(
+          [9, -9, 6, -6, 3, 0].map((x) => Animated.timing(shake, { toValue: x, duration: 50, useNativeDriver: true })),
+        ).start();
+      } else if (effect === "flash") {
+        flash.setValue(0.85);
+        Animated.timing(flash, { toValue: 0, duration: 420, useNativeDriver: true }).start();
+      } else if (effect === "heartbeat") {
+        Animated.sequence(
+          [1.025, 1, 1.018, 1].map((v) => Animated.timing(pulse, { toValue: v, duration: 130, useNativeDriver: true })),
+        ).start();
+      } else if (effect === "blur_in") {
+        dip.setValue(0.9);
+        Animated.timing(dip, { toValue: 0, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+      }
+    },
+    [cameraPan, cameraZoom, dip, flash, pulse, shake],
+  );
+
   const load = useCallback(async () => {
     setError(null);
     try {
-      const data = await apiRequest<PlayView>(`/play/save-slots/${slotId}`);
-      setView(data);
+      present(await apiRequest<PlayView>(`/play/save-slots/${slotId}`));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось загрузить сцену");
     }
-  }, [slotId]);
+  }, [slotId, present]);
 
   useEffect(() => {
+    hydrateSettings();
     load().finally(() => setLoading(false));
-  }, [load]);
+  }, [load, hydrateSettings]);
 
-  const advance = async () => {
-    if (view?.type !== "DIALOGUE" || !view.canAdvance || busy) return;
-    setBusy(true);
-    await fadeBox(0, 120);
-    try {
-      const data = await apiRequest<PlayView>(`/play/save-slots/${slotId}/advance`, { method: "POST" });
-      setView(data);
-    } catch (err) {
-      Alert.alert("Ошибка", err instanceof ApiError ? err.message : "Попробуйте ещё раз");
-    } finally {
-      await fadeBox(1, 150);
-      setBusy(false);
-    }
+  // Music belongs to this screen: it pauses with the app and stops when the reader closes.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") audioEngine.resume();
+      else audioEngine.pause();
+    });
+    return () => {
+      subscription.remove();
+      audioEngine.stopAll();
+    };
+  }, []);
+
+  useEffect(() => {
+    audioEngine.setVolumes(settings.musicVolume, settings.sfxVolume);
+  }, [settings.musicVolume, settings.sfxVolume]);
+
+  /** Runs one server action. `nodeId` makes it safe to repeat: if the response of an earlier
+   * attempt was lost, the server recognises the stale node and just returns where we are. */
+  const act = useCallback(
+    async (path: string, body: Record<string, unknown>, opts: { quiet?: boolean } = {}) => {
+      if (busyRef.current) return false;
+      busyRef.current = true;
+      setBusy(true);
+      if (!opts.quiet) await fadeBox(0, 110);
+      try {
+        const next = await apiRequest<PlayView>(`/play/save-slots/${slotId}/${path}`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        present(next, { quiet: opts.quiet });
+        return true;
+      } catch (err) {
+        setAuto(false);
+        setSkipping(false);
+        Alert.alert("Не получилось", err instanceof ApiError ? err.message : "Проверьте соединение и попробуйте ещё раз");
+        return false;
+      } finally {
+        if (!opts.quiet) await fadeBox(1, 140);
+        else boxOpacity.setValue(1);
+        busyRef.current = false;
+        setBusy(false);
+      }
+    },
+    [slotId, present, fadeBox, boxOpacity],
+  );
+
+  const dialogue = view?.type === "DIALOGUE" ? view : null;
+  const fullText = dialogue ? t(dialogue.text) : "";
+  const typer = useTypewriter(fullText, skipping ? 0 : settings.textSpeed, dialogue?.nodeId ?? "");
+
+  const advance = useCallback(
+    (opts: { quiet?: boolean } = {}) => {
+      const current = viewRef.current;
+      if (current?.type !== "DIALOGUE" || !current.canAdvance) return;
+      act("advance", { nodeId: current.nodeId }, opts);
+    },
+    [act],
+  );
+
+  const onTapStage = () => {
+    if (uiHidden) return setUiHidden(false);
+    if (skipping) return setSkipping(false);
+    if (auto) setAuto(false);
+    if (!dialogue) return;
+    if (!typer.done) return typer.finish();
+    advance();
   };
 
-  const choose = async (choiceOptionId: string) => {
-    if (busy) return;
-    setBusy(true);
-    await fadeBox(0, 120);
-    try {
-      const data = await apiRequest<PlayView>(`/play/save-slots/${slotId}/choice`, {
-        method: "POST",
-        body: JSON.stringify({ choiceOptionId }),
-      });
-      setView(data);
-    } catch (err) {
-      Alert.alert("Не получилось", err instanceof ApiError ? err.message : "Попробуйте ещё раз");
-    } finally {
-      await fadeBox(1, 150);
-      setBusy(false);
+  // Auto-play: once a line is fully shown, wait (longer for longer lines), then move on.
+  useEffect(() => {
+    if (!auto || !dialogue || !typer.done || busy || logOpen || settingsOpen) return;
+    if (!dialogue.canAdvance) return setAuto(false);
+    const timer = setTimeout(() => advance(), settings.autoDelayMs + fullText.length * 22);
+    return () => clearTimeout(timer);
+  }, [auto, dialogue, typer.done, busy, logOpen, settingsOpen, advance, settings.autoDelayMs, fullText.length]);
+
+  // Skip: race through dialogue and stop by itself at the next choice or ending.
+  useEffect(() => {
+    if (!skipping || busy) return;
+    if (!dialogue || !dialogue.canAdvance) return setSkipping(false);
+    const timer = setTimeout(() => advance({ quiet: true }), SKIP_INTERVAL_MS);
+    return () => clearTimeout(timer);
+  }, [skipping, dialogue, busy, advance]);
+
+  const choose = useCallback(
+    async (option: ChoiceOptionView) => {
+      const current = viewRef.current;
+      if (current?.type !== "CHOICE") return;
+      const paid = Boolean(option.costCurrency) && option.costAmount > 0 && !option.owned;
+      const ok = await act("choice", { choiceOptionId: option.id, nodeId: current.nodeId });
+      if (ok && paid) refreshWallet();
+    },
+    [act, refreshWallet],
+  );
+
+  const confirmAndChoose = (option: ChoiceOptionView) => {
+    const paid = Boolean(option.costCurrency) && option.costAmount > 0 && !option.owned;
+    if (!paid) return void choose(option);
+    const currency = option.costCurrency === "HARD" ? "кристаллов" : "монет";
+    Alert.alert(
+      "Платный выбор",
+      `«${t(option.text)}»\n\nБудет списано ${option.costAmount} ${currency}. Этот вариант останется вашим: при повторном прохождении платить снова не придётся.`,
+      [
+        { text: "Отмена", style: "cancel" },
+        { text: `Потратить ${option.costAmount}`, onPress: () => void choose(option) },
+      ],
+    );
+  };
+
+  const onToolbar = (action: ToolbarAction) => {
+    if (action === "back") {
+      setAuto(false);
+      setSkipping(false);
+      act("rollback", {});
+    } else if (action === "log") setLogOpen(true);
+    else if (action === "settings") setSettingsOpen(true);
+    else if (action === "hide") setUiHidden(true);
+    else if (action === "auto") {
+      setSkipping(false);
+      setAuto((v) => !v);
+    } else if (action === "skip") {
+      setAuto(false);
+      setSkipping((v) => !v);
     }
   };
 
   if (loading) {
     return (
       <View style={styles.center}>
+        <Stack.Screen options={{ headerShown: false }} />
         <ActivityIndicator color={colors.accent} size="large" />
       </View>
     );
@@ -95,106 +279,235 @@ export default function ReadingScreen() {
       <View style={styles.center}>
         <Stack.Screen options={{ headerShown: false }} />
         <Text style={styles.errorText}>{error ?? "Сцена не найдена"}</Text>
+        <Button title="Попробовать снова" onPress={load} />
         <Button title="Назад" onPress={() => router.back()} variant="secondary" />
       </View>
     );
   }
 
-  const background =
-    view.type === "DIALOGUE" && view.backgroundImageUrl ? view.backgroundImageUrl : undefined;
+  const stage = view.stage;
+  const reduceMotion = settings.reduceMotion;
+  const panDistance = 46;
 
   return (
     <View style={styles.flex}>
       <Stack.Screen options={{ headerShown: false }} />
-      <ImageBackground
-        source={background ? { uri: background } : undefined}
-        style={styles.background}
-        imageStyle={styles.backgroundImage}
-      >
-        <View style={styles.scrim} />
 
-        {view.type !== "END" && (
+      <Animated.View
+        style={[
+          styles.world,
+          {
+            transform: [
+              { translateX: Animated.add(shake, Animated.multiply(cameraPan, panDistance)) },
+              { scale: Animated.multiply(cameraZoom, pulse) },
+            ],
+          },
+        ]}
+      >
+        <CrossfadeImage uri={stage.backgroundUrl} instant={reduceMotion || skipping} />
+        <View style={styles.scrim} />
+        {view.type === "DIALOGUE" && !stage.cgUrl && (
           <View style={styles.stage} pointerEvents="none">
-            {view.type === "DIALOGUE" &&
-              view.staged.map((s) => <StagedSprite key={s.characterId} staged={s} />)}
+            {view.staged.map((s) => (
+              <StageSprite
+                key={s.characterId}
+                staged={s}
+                reduceMotion={reduceMotion || skipping}
+                speaking={!view.speaker || view.speaker.id === s.characterId}
+              />
+            ))}
           </View>
         )}
+        <CrossfadeImage uri={stage.cgUrl} instant={reduceMotion || skipping} />
+        <Atmosphere kind={stage.atmosphere} reduceMotion={reduceMotion} />
+      </Animated.View>
 
-        <SafeAreaView style={styles.foreground} edges={["bottom"]}>
-          <Animated.View style={{ opacity: boxOpacity }}>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dip, { opacity: dip }]} />
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.flash, { opacity: flash }]} />
+
+      {/* The whole screen advances the story; controls below sit on top of this layer. */}
+      <Pressable
+        style={StyleSheet.absoluteFill}
+        onPress={onTapStage}
+        accessibilityRole="button"
+        accessibilityLabel={uiHidden ? "Вернуть интерфейс" : "Продолжить"}
+      />
+
+      {!uiHidden && (
+        <SafeAreaView style={styles.topBar} edges={["top"]} pointerEvents="box-none">
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={16}
+            style={styles.exit}
+            accessibilityRole="button"
+            accessibilityLabel="Выйти из главы. Прогресс сохранён"
+          >
+            <Text style={styles.exitText}>‹ Выйти</Text>
+          </Pressable>
+          {(auto || skipping) && (
+            <Text style={styles.modeBadge}>{skipping ? "Пропуск… коснитесь, чтобы остановить" : "Авто"}</Text>
+          )}
+        </SafeAreaView>
+      )}
+
+      {!uiHidden && view.type !== "END" && (
+        <SafeAreaView style={styles.foreground} edges={["bottom"]} pointerEvents="box-none">
+          <ReaderToolbar
+            onAction={onToolbar}
+            active={{ auto, skip: skipping }}
+            disabled={{
+              back: busy || !view.saveSlot.canRollback,
+              auto: view.type !== "DIALOGUE",
+              skip: view.type !== "DIALOGUE",
+            }}
+          />
+          <Animated.View style={{ opacity: boxOpacity }} pointerEvents="box-none">
             {view.type === "DIALOGUE" && (
-              <Pressable style={styles.tapArea} onPress={advance} disabled={!view.canAdvance || busy}>
-                <DialogueBox view={view} busy={busy} />
+              <Pressable style={styles.tapArea} onPress={onTapStage} disabled={busy}>
+                <DialogueBox view={view} text={typer.visibleText} fullText={fullText} done={typer.done} />
               </Pressable>
             )}
-
-            {view.type === "CHOICE" && <ChoicePanel view={view} busy={busy} onChoose={choose} />}
-
-            {view.type === "END" && (
-              <View style={styles.endPanel}>
-                <Text style={styles.endTitle}>Конец главы</Text>
-                <Button title="К списку глав" onPress={() => router.back()} />
-              </View>
+            {view.type === "CHOICE" && (
+              <ChoicePanel
+                view={view}
+                busy={busy}
+                paused={logOpen || settingsOpen}
+                onChoose={confirmAndChoose}
+                onTimeout={(option) => void choose(option)}
+              />
             )}
           </Animated.View>
         </SafeAreaView>
-      </ImageBackground>
+      )}
+
+      {view.type === "END" && (
+        <EndPanel
+          view={view}
+          busy={busy}
+          onReplay={() => act("restart", {})}
+          onNext={async (chapterId) => {
+            try {
+              const next = await apiRequest<PlayView>(`/play/chapters/${chapterId}/start`, {
+                method: "POST",
+                body: JSON.stringify({ slotIndex: view.saveSlot.slotIndex }),
+              });
+              refreshWallet();
+              router.replace(`/read/${next.saveSlot.id}`);
+              present(next);
+            } catch (err) {
+              Alert.alert("Глава пока недоступна", err instanceof ApiError ? err.message : "Попробуйте ещё раз");
+            }
+          }}
+        />
+      )}
+
+      <DialogueLog slotId={slotId} visible={logOpen} fontScale={settings.fontScale} onClose={() => setLogOpen(false)} />
+      <ReaderSettingsSheet visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </View>
   );
 }
 
-function StagedSprite({ staged }: { staged: StagedCharacterView }) {
-  if (!staged.spriteUrl) return null;
+/** Full-screen image that fades to the next one instead of snapping (background, CG).
+ * The previous image stays underneath until the new one has loaded and faded in. */
+function CrossfadeImage({ uri, instant }: { uri: string | null; instant: boolean }) {
+  const [shown, setShown] = useState<string | null>(uri);
+  const [incoming, setIncoming] = useState<string | null>(null);
+  const opacity = useRef(new Animated.Value(uri ? 1 : 0)).current;
+  const incomingOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (uri === shown) return;
+    if (!uri) {
+      Animated.timing(opacity, { toValue: 0, duration: instant ? 0 : 400, useNativeDriver: true }).start(() => {
+        setShown(null);
+      });
+      return;
+    }
+    if (!shown || instant) {
+      setShown(uri);
+      opacity.setValue(1);
+      return;
+    }
+    incomingOpacity.setValue(0);
+    setIncoming(uri);
+  }, [uri]);
+
+  const onIncomingLoaded = () => {
+    Animated.timing(incomingOpacity, { toValue: 1, duration: 450, useNativeDriver: true }).start(() => {
+      setShown(incoming);
+      setIncoming(null);
+    });
+  };
+
   return (
-    <ImageBackground
-      source={{ uri: staged.spriteUrl }}
-      style={[
-        styles.sprite,
-        staged.position === "left" && styles.spriteLeft,
-        staged.position === "center" && styles.spriteCenter,
-        staged.position === "right" && styles.spriteRight,
-      ]}
-      resizeMode="contain"
-    />
+    <>
+      {shown ? (
+        <Animated.Image source={{ uri: shown }} style={[StyleSheet.absoluteFill, { opacity }]} resizeMode="cover" />
+      ) : null}
+      {incoming ? (
+        <Animated.Image
+          source={{ uri: incoming }}
+          onLoad={onIncomingLoaded}
+          onError={onIncomingLoaded}
+          style={[StyleSheet.absoluteFill, { opacity: incomingOpacity }]}
+          resizeMode="cover"
+        />
+      ) : null}
+    </>
   );
 }
 
-function resolveBoxPosition(
-  speaker: { id: string } | null,
-  staged: { characterId: string; position: "left" | "center" | "right" }[],
-): "left" | "center" | "right" {
-  if (!speaker) return "center"; // narrator
-  const own = staged.find((s) => s.characterId === speaker.id);
-  // Speaking but no matching staged entry: per spec, falls back to centered full-width,
-  // same as the narrator ("рамка не найдёт совпадения по characterId и по умолчанию
-  // встаёт по центру, как рассказчик") - also keeps pre-existing chapters (empty/mismatched
-  // `staged`) rendering as they always did, instead of jumping to a 78%-wide anchored box.
+function resolveBoxPosition(view: DialogueView): "left" | "center" | "right" {
+  if (!view.speaker) return "center"; // narrator
+  const own = view.staged.find((s) => s.characterId === view.speaker?.id);
+  // A speaker who is not on stage gets the centred, full-width panel, same as the narrator.
   return own?.position ?? "center";
 }
 
 function DialogueBox({
   view,
-  busy,
+  text,
+  fullText,
+  done,
 }: {
-  view: Extract<PlayView, { type: "DIALOGUE" }>;
-  busy: boolean;
+  view: DialogueView;
+  text: string;
+  fullText: string;
+  done: boolean;
 }) {
-  const boxPosition = resolveBoxPosition(view.speaker, view.staged);
+  const { fontScale, boxOpacity } = useReaderSettings();
+  const boxPosition = resolveBoxPosition(view);
+  const fontSize = 16 * fontScale;
+  const lineHeight = 23 * fontScale;
   return (
     <View
       style={[
         styles.dialogueBox,
+        { backgroundColor: `rgba(20,16,13,${boxOpacity})` },
         boxPosition === "left" && styles.dialogueBoxLeft,
         boxPosition === "center" && styles.dialogueBoxCenter,
         boxPosition === "right" && styles.dialogueBoxRight,
         view.isThought && styles.thoughtBox,
       ]}
+      accessible
+      accessibilityLabel={`${view.speaker ? `${t(view.speaker.name)}: ` : ""}${fullText}`}
     >
       {view.speaker ? (
-        <Text style={[styles.speakerName, { color: view.speaker.nameColor }]}>{t(view.speaker.name)}</Text>
+        <Text style={[styles.speakerName, { color: view.speaker.nameColor, fontSize: 15 * fontScale }]}>
+          {t(view.speaker.name)}
+        </Text>
       ) : null}
-      <Text style={[styles.dialogueText, view.isThought && styles.thoughtText]}>{t(view.text)}</Text>
-      {view.canAdvance && !busy ? <Text style={styles.advanceHint}>▼ нажмите, чтобы продолжить</Text> : null}
+      {/* The invisible full line reserves the final height, so the panel does not grow
+          and push the layout around while the visible text is being typed. */}
+      <View>
+        <Text style={[styles.dialogueText, { fontSize, lineHeight, opacity: 0 }]}>{fullText}</Text>
+        <Text
+          style={[styles.dialogueText, styles.typed, { fontSize, lineHeight }, view.isThought && styles.thoughtText]}
+        >
+          {text}
+        </Text>
+      </View>
+      <Text style={[styles.advanceHint, !(done && view.canAdvance) && styles.hidden]}>▼</Text>
     </View>
   );
 }
@@ -202,74 +515,155 @@ function DialogueBox({
 function ChoicePanel({
   view,
   busy,
+  paused,
   onChoose,
+  onTimeout,
 }: {
-  view: Extract<PlayView, { type: "CHOICE" }>;
+  view: ChoiceView;
   busy: boolean;
-  onChoose: (id: string) => void;
+  paused: boolean;
+  onChoose: (option: ChoiceOptionView) => void;
+  onTimeout: (option: ChoiceOptionView) => void;
 }) {
+  const { fontScale } = useReaderSettings();
+  const remaining = useRef(new Animated.Value(1)).current;
+  const timeoutOption = view.timerSeconds ? view.options.find((o) => o.id === view.timeoutOptionId) : undefined;
+
+  // The countdown restarts from full whenever the reader comes back from the log/settings:
+  // it is there for tension, not to punish someone for adjusting the font size.
+  useEffect(() => {
+    if (!view.timerSeconds || !timeoutOption || paused || busy) return;
+    remaining.setValue(1);
+    const animation = Animated.timing(remaining, {
+      toValue: 0,
+      duration: view.timerSeconds * 1000,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    });
+    animation.start(({ finished }) => {
+      if (finished) onTimeout(timeoutOption);
+    });
+    return () => animation.stop();
+  }, [view.nodeId, paused, busy]);
+
   return (
     <View style={styles.choicePanel}>
-      {view.prompt ? <Text style={styles.choicePrompt}>{t(view.prompt)}</Text> : null}
-      {view.options.map((option) => (
-        <Pressable
-          key={option.id}
-          onPress={() => onChoose(option.id)}
-          disabled={busy || !option.affordable}
-          style={({ pressed }) => [
-            styles.choiceOption,
-            !option.affordable && styles.choiceOptionDisabled,
-            pressed && option.affordable && styles.choiceOptionPressed,
-          ]}
-        >
-          <Text style={styles.choiceOptionText}>{t(option.text)}</Text>
-          {option.costCurrency ? (
-            <Text style={styles.choiceOptionCost}>
-              {option.costCurrency === "HARD" ? "💎" : "🪙"} {option.costAmount}
-            </Text>
-          ) : null}
-        </Pressable>
-      ))}
+      {view.prompt ? <Text style={[styles.choicePrompt, { fontSize: 16 * fontScale }]}>{t(view.prompt)}</Text> : null}
+      {view.timerSeconds && timeoutOption ? (
+        <View style={styles.timerTrack} accessibilityLabel={`На выбор ${view.timerSeconds} секунд`}>
+          <Animated.View style={[styles.timerFill, { transform: [{ scaleX: remaining }] }]} />
+        </View>
+      ) : null}
+      {view.options.map((option) => {
+        const paid = Boolean(option.costCurrency) && option.costAmount > 0;
+        const locked = paid && !option.owned && !option.affordable;
+        return (
+          <Pressable
+            key={option.id}
+            onPress={() => onChoose(option)}
+            disabled={busy || locked}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: busy || locked }}
+            style={({ pressed }) => [
+              styles.choiceOption,
+              paid && styles.choiceOptionPaid,
+              locked && styles.choiceOptionDisabled,
+              pressed && styles.choiceOptionPressed,
+            ]}
+          >
+            <Text style={[styles.choiceOptionText, { fontSize: 15 * fontScale }]}>{t(option.text)}</Text>
+            {paid ? (
+              <Text style={[styles.choiceOptionCost, option.owned && styles.choiceOwned]}>
+                {option.owned
+                  ? "открыто"
+                  : `${option.costCurrency === "HARD" ? "💎" : "🪙"} ${option.costAmount}${locked ? " · не хватает" : ""}`}
+              </Text>
+            ) : null}
+          </Pressable>
+        );
+      })}
+      {view.options.length === 0 ? (
+        <Text style={styles.choicePrompt}>Здесь пока нет доступных вариантов. Вернитесь на шаг назад.</Text>
+      ) : null}
     </View>
   );
 }
 
+function EndPanel({
+  view,
+  busy,
+  onReplay,
+  onNext,
+}: {
+  view: EndView;
+  busy: boolean;
+  onReplay: () => void;
+  onNext: (chapterId: string) => void;
+}) {
+  const appear = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(appear, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [appear]);
+  const { rewards, nextChapter } = view;
+  const earned = [rewards.xp > 0 ? `+${rewards.xp} опыта` : null, rewards.soft > 0 ? `+${rewards.soft} монет` : null]
+    .filter(Boolean)
+    .join("  ·  ");
+
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, styles.endScrim, { opacity: appear }]}>
+      <SafeAreaView style={styles.endPanel}>
+        <View style={styles.endRule} />
+        <Text style={styles.endEyebrow}>Глава завершена</Text>
+        <Text style={styles.endTitle}>{view.endingTitle ? t(view.endingTitle) : "Продолжение следует"}</Text>
+        {earned ? <Text style={styles.endRewards}>{earned}</Text> : null}
+        <View style={styles.endRule} />
+        <View style={styles.endActions}>
+          {nextChapter ? (
+            <Button
+              title={
+                nextChapter.unlocked
+                  ? `Следующая глава: ${t(nextChapter.title)}`
+                  : `Открыть следующую главу · ${nextChapter.unlockCost} энергии`
+              }
+              onPress={() => onNext(nextChapter.id)}
+              disabled={busy}
+            />
+          ) : (
+            <Text style={styles.endNote}>Новые главы уже пишутся — загляните позже.</Text>
+          )}
+          <Button title="Пройти главу заново" onPress={onReplay} variant="secondary" disabled={busy} />
+          <Button title="К списку глав" onPress={() => router.back()} variant="secondary" />
+        </View>
+      </SafeAreaView>
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1, backgroundColor: "#0a0812", overflow: "hidden" },
   center: {
     flex: 1,
-    alignItems: "center",
+    alignItems: "stretch",
     justifyContent: "center",
     backgroundColor: colors.background,
     gap: 16,
     padding: 24,
   },
-  errorText: { color: colors.danger, textAlign: "center", fontSize: 15 },
-  background: { flex: 1, backgroundColor: "#0a0812" },
-  backgroundImage: { resizeMode: "cover" },
-  scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(10,8,18,0.25)" },
-  stage: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-around",
-    paddingBottom: 20,
-  },
-  // Scaled by the sprite's own 2000×4600 canvas aspect ratio, at 90% of the stage's
-  // height — not an arbitrary box. Width follows from the aspect ratio automatically.
-  sprite: { height: "90%", aspectRatio: 2000 / 4600 },
-  spriteLeft: { alignSelf: "flex-start", marginLeft: "-8%" },
-  spriteCenter: { alignSelf: "center" },
-  // Pushed past the flush-right edge: the subject isn't drawn flush to its own canvas
-  // edge, so flush positioning alone still reads as centered. The screen already crops
-  // overflow, so this is safe the same way the removed leg-crop line was.
-  spriteRight: { alignSelf: "flex-end", marginRight: "-8%" },
-  // Anchored above the waist line's on-screen position (56% was waist-level itself, read
-  // as too low) — overlays the character's lower chest/waist instead of pushing it up.
-  foreground: { position: "absolute", left: 0, right: 0, top: "51%", justifyContent: "flex-end" },
+  errorText: { color: colors.danger, textAlign: "center", fontSize: 15, lineHeight: 22 },
+  world: { ...StyleSheet.absoluteFillObject },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,8,18,0.25)" },
+  stage: { ...StyleSheet.absoluteFillObject, bottom: 20 },
+  dip: { backgroundColor: "#000" },
+  flash: { backgroundColor: "#fff8e7" },
+  topBar: { position: "absolute", top: 0, left: 0, right: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
+  exit: { minHeight: 44, justifyContent: "center" },
+  exitText: { color: colors.text, fontSize: 15, textShadowColor: "rgba(0,0,0,0.9)", textShadowRadius: 6 },
+  modeBadge: { color: colors.accent, fontSize: 12, letterSpacing: 0.4, textShadowColor: "rgba(0,0,0,0.9)", textShadowRadius: 6 },
+  // Anchored a little above the waist line's on-screen position, overlaying the character's
+  // lower body instead of pushing the sprite up.
+  foreground: { position: "absolute", left: 0, right: 0, top: "47%", bottom: 0, justifyContent: "flex-start" },
   tapArea: { paddingHorizontal: 16, paddingBottom: 32 },
   dialogueBox: {
-    backgroundColor: "rgba(20,16,28,0.92)",
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -280,27 +674,30 @@ const styles = StyleSheet.create({
   dialogueBoxLeft: { width: "94%", alignSelf: "flex-start" },
   dialogueBoxCenter: { width: "100%", alignSelf: "center" },
   dialogueBoxRight: { width: "94%", alignSelf: "flex-end" },
-  thoughtBox: {
-    borderColor: colors.accentMuted,
-    borderStyle: "dashed",
-  },
-  speakerName: { fontSize: 15, fontWeight: "700" },
-  dialogueText: { color: colors.text, fontSize: 16, lineHeight: 23 },
+  thoughtBox: { borderColor: colors.accentMuted, borderStyle: "dashed" },
+  speakerName: { fontWeight: "700" },
+  dialogueText: { color: colors.text },
+  typed: { position: "absolute", top: 0, left: 0, right: 0 },
   thoughtText: { fontStyle: "italic", color: colors.textMuted },
-  advanceHint: { color: colors.textMuted, fontSize: 12, alignSelf: "flex-end" },
+  advanceHint: { color: colors.accent, fontSize: 11, alignSelf: "flex-end" },
+  hidden: { opacity: 0 },
   choicePanel: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 },
   choicePrompt: {
     color: colors.text,
-    fontSize: 16,
     fontWeight: "600",
     textAlign: "center",
     marginBottom: 4,
+    textShadowColor: "rgba(0,0,0,0.9)",
+    textShadowRadius: 8,
   },
+  timerTrack: { height: 2, backgroundColor: "rgba(243,236,224,0.18)", borderRadius: 1, overflow: "hidden" },
+  timerFill: { flex: 1, backgroundColor: colors.accent },
   choiceOption: {
-    backgroundColor: "rgba(31,26,43,0.94)",
+    backgroundColor: "rgba(31,26,22,0.94)",
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.accent,
+    borderColor: colors.border,
+    minHeight: 52,
     paddingVertical: 14,
     paddingHorizontal: 18,
     flexDirection: "row",
@@ -308,10 +705,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
+  choiceOptionPaid: { borderColor: colors.accent },
   choiceOptionPressed: { opacity: 0.8 },
-  choiceOptionDisabled: { borderColor: colors.border, opacity: 0.5 },
-  choiceOptionText: { color: colors.text, fontSize: 15, flex: 1 },
+  choiceOptionDisabled: { opacity: 0.5 },
+  choiceOptionText: { color: colors.text, flex: 1 },
   choiceOptionCost: { color: colors.accent, fontSize: 13, fontWeight: "600" },
-  endPanel: { alignItems: "center", padding: 32, gap: 20 },
-  endTitle: { color: colors.accent, fontSize: 24, fontWeight: "700" },
+  choiceOwned: { color: colors.textMuted, fontWeight: "400" },
+  endScrim: { backgroundColor: "rgba(16,13,11,0.9)" },
+  endPanel: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28, gap: 14 },
+  endRule: { width: 56, height: StyleSheet.hairlineWidth * 2, backgroundColor: colors.accent },
+  endEyebrow: { color: colors.accentMuted, fontSize: 12, letterSpacing: 2, textTransform: "uppercase", marginTop: 10 },
+  endTitle: { color: colors.text, fontSize: 28, lineHeight: 36, textAlign: "center", fontFamily: fonts.displaySemiBold },
+  endRewards: { color: colors.accent, fontSize: 15, marginBottom: 10 },
+  endNote: { color: colors.textMuted, textAlign: "center", fontSize: 14, lineHeight: 20 },
+  endActions: { alignSelf: "stretch", gap: 12, marginTop: 22 },
 });
