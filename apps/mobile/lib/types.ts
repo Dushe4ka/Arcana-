@@ -198,3 +198,21 @@ export type DailyRewardClaim = {
   streak: number;
   reward: { soft: number };
 };
+
+/** GET /me/collections - one entry per story the player has started. */
+export type StoryCollection = {
+  storyId: string;
+  storyTitle: LocalizedText;
+  coverImageUrl: string | null;
+  chaptersCompleted: number;
+  chaptersTotal: number;
+  endings: {
+    nodeId: string;
+    seasonIndex: number;
+    chapterIndex: number;
+    unlocked: boolean;
+    /** null while the ending is still locked - it is not spoiled. */
+    title: LocalizedText | null;
+  }[];
+  illustrations: { unlocked: string[]; total: number };
+};

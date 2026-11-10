@@ -97,9 +97,39 @@ export default function ProfileScreen() {
           <Button title="Забрать награду" onPress={onClaim} loading={claiming} />
         </View>
 
+        <View style={styles.linksCard}>
+          <ProfileLink
+            title="Коллекции"
+            hint="Открытые финалы и иллюстрации"
+            onPress={() => router.push("/collections")}
+          />
+          <View style={styles.linkDivider} />
+          <ProfileLink
+            title="Безопасность"
+            hint="Смена пароля, выход на всех устройствах"
+            onPress={() => router.push("/security")}
+          />
+        </View>
+
         <Button title="Выйти" onPress={onLogout} variant="secondary" />
       </ScrollView>
     </View>
+  );
+}
+
+function ProfileLink({ title, hint, onPress }: { title: string; hint: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.link, pressed && styles.linkPressed]}
+    >
+      <View style={styles.linkText}>
+        <Text style={styles.linkTitle}>{title}</Text>
+        <Text style={styles.linkHint}>{hint}</Text>
+      </View>
+      <Text style={styles.linkChevron}>›</Text>
+    </Pressable>
   );
 }
 
@@ -162,6 +192,14 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 10,
   },
+  linksCard: { backgroundColor: colors.surface, borderRadius: radius.lg, paddingHorizontal: 20 },
+  link: { flexDirection: "row", alignItems: "center", minHeight: 64, gap: 12 },
+  linkPressed: { opacity: 0.6 },
+  linkText: { flex: 1, gap: 2 },
+  linkTitle: { color: colors.text, fontSize: 16, fontWeight: "600" },
+  linkHint: { color: colors.textMuted, fontSize: 13 },
+  linkChevron: { color: colors.accentMuted, fontSize: 24 },
+  linkDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
   dailyTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
   dailyHint: { color: colors.textMuted, fontSize: 13 },
 });

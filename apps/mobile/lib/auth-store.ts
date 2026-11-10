@@ -119,6 +119,16 @@ async function persistAuth(res: AuthResponse): Promise<void> {
   ]);
 }
 
+/** Replaces the session's tokens (after a password change the server signs every other
+ * device out and hands this one a fresh pair). */
+export async function applyTokenPair(pair: TokenPair): Promise<void> {
+  await Promise.all([
+    SecureStore.setItemAsync(ACCESS_KEY, pair.accessToken),
+    SecureStore.setItemAsync(REFRESH_KEY, pair.refreshToken),
+  ]);
+  useAuthStore.setState({ accessToken: pair.accessToken, refreshToken: pair.refreshToken });
+}
+
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   return "Не удалось подключиться к серверу";
