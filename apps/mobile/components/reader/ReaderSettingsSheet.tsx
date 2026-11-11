@@ -1,7 +1,7 @@
 import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { FONT_SCALES, TEXT_SPEEDS, useReaderSettings } from "../../lib/reader-settings";
+import { AUTO_TAP_OPTIONS, FONT_SCALES, TEXT_SPEEDS, useReaderSettings } from "../../lib/reader-settings";
 import { colors, fonts, radius } from "../../lib/theme";
 
 function Segments<T extends number>({
@@ -81,17 +81,18 @@ export function ReaderSettingsSheet({ visible, onClose }: { visible: boolean; on
           <Text style={styles.section}>Скорость появления текста</Text>
           <Segments label="Скорость появления текста" options={TEXT_SPEEDS} value={settings.textSpeed as (typeof TEXT_SPEEDS)[number]["value"]} onChange={(textSpeed) => settings.update({ textSpeed })} />
 
-          <Text style={styles.section}>Пауза в режиме «Авто»</Text>
+          <Text style={styles.section}>Таймер автоклика</Text>
           <Segments
-            label="Пауза в режиме Авто"
-            options={[
-              { value: 900, label: "Короткая" },
-              { value: 1800, label: "Обычная" },
-              { value: 3200, label: "Длинная" },
-            ]}
-            value={settings.autoDelayMs}
-            onChange={(autoDelayMs) => settings.update({ autoDelayMs })}
+            label="Таймер автоклика"
+            options={AUTO_TAP_OPTIONS}
+            value={settings.autoTapSeconds as (typeof AUTO_TAP_OPTIONS)[number]["value"]}
+            onChange={(autoTapSeconds) => settings.update({ autoTapSeconds })}
           />
+          <Text style={styles.note}>
+            {settings.autoTapSeconds === 0
+              ? "«Авто» само подбирает паузу по длине реплики и средней скорости чтения: короткие фразы сменяются быстро, длинные остаются на экране дольше."
+              : `Каждая реплика будет сменяться через ${settings.autoTapSeconds} с после того, как появится целиком.`}
+          </Text>
 
           <Text style={styles.section}>Плотность панели текста</Text>
           <Segments
@@ -161,6 +162,7 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: 24, paddingBottom: 28, gap: 10 },
   preview: { borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, padding: 16, marginTop: 10 },
   section: { color: colors.textMuted, fontSize: 12, letterSpacing: 0.8, textTransform: "uppercase", marginTop: 14 },
+  note: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   segments: { flexDirection: "row", gap: 8 },
   segment: {
     flex: 1,

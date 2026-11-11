@@ -8,8 +8,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   Vibration,
   View,
+  type GestureResponderEvent,
 } from "react-native";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,18 +20,20 @@ import { Button } from "../../components/Button";
 import { Atmosphere } from "../../components/reader/Atmosphere";
 import { DialogueLog } from "../../components/reader/DialogueLog";
 import { ReaderSettingsSheet } from "../../components/reader/ReaderSettingsSheet";
-import { ReaderToolbar, type ToolbarAction } from "../../components/reader/ReaderToolbar";
+import { ReaderToolbar, type SkipMode, type ToolbarAction } from "../../components/reader/ReaderToolbar";
 import { StageSprite } from "../../components/reader/StageSprite";
 import { useTypewriter } from "../../components/reader/useTypewriter";
 import { apiRequest, ApiError } from "../../lib/api";
 import { audioEngine } from "../../lib/audio";
 import { t } from "../../lib/locale";
-import { useReaderSettings } from "../../lib/reader-settings";
+import { autoTapDelayMs, FAST_FORWARD, useReaderSettings } from "../../lib/reader-settings";
 import { colors, fonts, radius } from "../../lib/theme";
 import type { ChoiceOptionView, ChoiceView, DialogueView, EndView, PlayView } from "../../lib/types";
 import { useWalletStore } from "../../lib/wallet-store";
 
-const SKIP_INTERVAL_MS = 90;
+// A tap in this top share of the screen opens the menu instead of advancing the story.
+const MENU_ZONE = 0.24;
+const MENU_AUTO_HIDE_MS = 6000;
 
 export default function ReadingScreen() {
   const { slotId } = useLocalSearchParams<{ slotId: string }>();
@@ -43,7 +47,11 @@ export default function ReadingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [uiHidden, setUiHidden] = useState(false);
   const [auto, setAuto] = useState(false);
-  const [skipping, setSkipping] = useState(false);
+  const [skip, setSkip] = useState<SkipMode>("off");
+  const skipping = skip !== "off";
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [hint, setHint] = useState(false);
+  const { height: screenHeight } = useWindowDimensions();
   const [logOpen, setLogOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -185,7 +193,7 @@ export default function ReadingScreen() {
         return true;
       } catch (err) {
         setAuto(false);
-        setSkipping(false);
+        setSkip("off");
         Alert.alert("Не получилось", err instanceof ApiError ? err.message : "Проверьте соединение и попробуйте ещё раз");
         return false;
       } finally {
@@ -211,30 +219,55 @@ export default function ReadingScreen() {
     [act],
   );
 
-  const onTapStage = () => {
+  const onTapStage = (event?: GestureResponderEvent) => {
     if (uiHidden) return setUiHidden(false);
-    if (skipping) return setSkipping(false);
+    // The upper part of the screen belongs to the menu: tap to bring it in, tap to dismiss.
+    if (event && event.nativeEvent.pageY < screenHeight * MENU_ZONE) return setMenuOpen((open) => !open);
+    if (menuOpen) return setMenuOpen(false);
+    if (skipping) return setSkip("off");
     if (auto) setAuto(false);
     if (!dialogue) return;
     if (!typer.done) return typer.finish();
     advance();
   };
 
-  // Auto-play: once a line is fully shown, wait (longer for longer lines), then move on.
+  // The menu leaves by itself, so it never sits over the character's face for long.
   useEffect(() => {
-    if (!auto || !dialogue || !typer.done || busy || logOpen || settingsOpen) return;
-    if (!dialogue.canAdvance) return setAuto(false);
-    const timer = setTimeout(() => advance(), settings.autoDelayMs + fullText.length * 22);
+    if (!menuOpen || logOpen || settingsOpen) return;
+    const timer = setTimeout(() => setMenuOpen(false), MENU_AUTO_HIDE_MS);
     return () => clearTimeout(timer);
-  }, [auto, dialogue, typer.done, busy, logOpen, settingsOpen, advance, settings.autoDelayMs, fullText.length]);
+  }, [menuOpen, logOpen, settingsOpen, auto, skip]);
 
-  // Skip: race through dialogue and stop by itself at the next choice or ending.
+  // Shown once ever: the menu is hidden, so a new reader has to be told where it is.
+  const hintDue = settings.hydrated && !settings.menuHintSeen && !loading;
+  const markHintSeen = settings.update;
+  useEffect(() => {
+    if (!hintDue) return;
+    setHint(true);
+    markHintSeen({ menuHintSeen: true });
+    const timer = setTimeout(() => setHint(false), 5000);
+    return () => clearTimeout(timer);
+  }, [hintDue, markHintSeen]);
+
+  const autoDelay = autoTapDelayMs(fullText, settings.autoTapSeconds);
+  const autoWaiting = auto && Boolean(dialogue?.canAdvance) && typer.done && !busy && !logOpen && !settingsOpen;
+
+  // Auto-tap: once a line is fully shown, wait as long as it takes to read it, then tap.
+  useEffect(() => {
+    if (auto && dialogue && !dialogue.canAdvance) setAuto(false);
+    if (!autoWaiting) return;
+    const timer = setTimeout(() => advance(), autoDelay);
+    return () => clearTimeout(timer);
+  }, [auto, dialogue, autoWaiting, autoDelay, advance]);
+
+  // Fast-forward: lines appear whole and move on at the chosen speed; it stops by itself
+  // at the next choice or ending. "Very fast" also skips one-shot effects and fades.
   useEffect(() => {
     if (!skipping || busy) return;
-    if (!dialogue || !dialogue.canAdvance) return setSkipping(false);
-    const timer = setTimeout(() => advance({ quiet: true }), SKIP_INTERVAL_MS);
+    if (!dialogue || !dialogue.canAdvance) return setSkip("off");
+    const timer = setTimeout(() => advance({ quiet: skip === "veryFast" }), FAST_FORWARD[skip]);
     return () => clearTimeout(timer);
-  }, [skipping, dialogue, busy, advance]);
+  }, [skip, skipping, dialogue, busy, advance]);
 
   const choose = useCallback(
     async (option: ChoiceOptionView) => {
@@ -262,19 +295,23 @@ export default function ReadingScreen() {
   };
 
   const onToolbar = (action: ToolbarAction) => {
+    if (action === "exit") return router.back();
     if (action === "back") {
       setAuto(false);
-      setSkipping(false);
+      setSkip("off");
       act("rollback", {});
     } else if (action === "log") setLogOpen(true);
     else if (action === "settings") setSettingsOpen(true);
-    else if (action === "hide") setUiHidden(true);
-    else if (action === "auto") {
-      setSkipping(false);
+    else if (action === "hide") {
+      setMenuOpen(false);
+      setUiHidden(true);
+    } else if (action === "auto") {
+      setSkip("off");
       setAuto((v) => !v);
     } else if (action === "skip") {
       setAuto(false);
-      setSkipping((v) => !v);
+      // off -> fast -> very fast -> off
+      setSkip((mode) => (mode === "off" ? "fast" : mode === "fast" ? "veryFast" : "off"));
     }
   };
 
@@ -346,38 +383,48 @@ export default function ReadingScreen() {
         accessibilityLabel={uiHidden ? "Вернуть интерфейс" : "Продолжить"}
       />
 
-      {!uiHidden && (
-        <SafeAreaView style={styles.topBar} edges={["top"]} pointerEvents="box-none">
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={16}
-            style={styles.exit}
-            accessibilityRole="button"
-            accessibilityLabel="Выйти из главы. Прогресс сохранён"
-          >
-            <Text style={styles.exitText}>‹ Выйти</Text>
-          </Pressable>
-          {(auto || skipping) && (
-            <Text style={styles.modeBadge}>{skipping ? "Пропуск… коснитесь, чтобы остановить" : "Авто"}</Text>
-          )}
+      {!uiHidden && view.type !== "END" && (auto || skipping) && !menuOpen && (
+        <SafeAreaView style={styles.topBar} edges={["top"]} pointerEvents="none">
+          <Text style={styles.modeBadge}>
+            {skip === "veryFast"
+              ? "Перемотка ×2 · коснитесь, чтобы остановить"
+              : skipping
+                ? "Перемотка · коснитесь, чтобы остановить"
+                : "Автоклик"}
+          </Text>
         </SafeAreaView>
+      )}
+
+      {!uiHidden && view.type !== "END" && hint && !menuOpen && (
+        <View style={styles.hint} pointerEvents="none">
+          <Text style={styles.hintText}>Коснитесь верхней части экрана, чтобы открыть меню</Text>
+        </View>
+      )}
+
+      {!uiHidden && view.type !== "END" && menuOpen && (
+        <View style={styles.menu} pointerEvents="box-none">
+          <ReaderToolbar
+            onAction={onToolbar}
+            auto={auto}
+            skip={skip}
+            canGoBack={!busy && view.saveSlot.canRollback}
+            canAutoplay={view.type === "DIALOGUE"}
+          />
+        </View>
       )}
 
       {!uiHidden && view.type !== "END" && (
         <SafeAreaView style={styles.foreground} edges={["bottom"]} pointerEvents="box-none">
-          <ReaderToolbar
-            onAction={onToolbar}
-            active={{ auto, skip: skipping }}
-            disabled={{
-              back: busy || !view.saveSlot.canRollback,
-              auto: view.type !== "DIALOGUE",
-              skip: view.type !== "DIALOGUE",
-            }}
-          />
           <Animated.View style={{ opacity: boxOpacity }} pointerEvents="box-none">
             {view.type === "DIALOGUE" && (
-              <Pressable style={styles.tapArea} onPress={onTapStage} disabled={busy}>
-                <DialogueBox view={view} text={typer.visibleText} fullText={fullText} done={typer.done} />
+              <Pressable style={styles.tapArea} onPress={() => onTapStage()} disabled={busy}>
+                <DialogueBox
+                  view={view}
+                  text={typer.visibleText}
+                  fullText={fullText}
+                  done={typer.done}
+                  autoMs={autoWaiting ? autoDelay : null}
+                />
               </Pressable>
             )}
             {view.type === "CHOICE" && (
@@ -482,13 +529,29 @@ function DialogueBox({
   text,
   fullText,
   done,
+  autoMs,
 }: {
   view: DialogueView;
   text: string;
   fullText: string;
   done: boolean;
+  /** While the auto-tap is counting down: how long it will take, for the progress line. */
+  autoMs: number | null;
 }) {
   const { fontScale, boxOpacity } = useReaderSettings();
+  const countdown = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (autoMs === null) return countdown.setValue(0);
+    countdown.setValue(1);
+    const animation = Animated.timing(countdown, {
+      toValue: 0,
+      duration: autoMs,
+      easing: Easing.linear,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [autoMs, countdown, view.nodeId]);
   const boxPosition = resolveBoxPosition(view);
   const fontSize = 16 * fontScale;
   const lineHeight = 23 * fontScale;
@@ -521,6 +584,8 @@ function DialogueBox({
         </Text>
       </View>
       <Text style={[styles.advanceHint, !(done && view.canAdvance) && styles.hidden]}>▼</Text>
+      {/* Auto-tap countdown: a thin gold line that burns down until the next tap. */}
+      <Animated.View style={[styles.autoLine, { opacity: autoMs === null ? 0 : 1, transform: [{ scaleX: countdown }] }]} />
     </View>
   );
 }
@@ -668,13 +733,25 @@ const styles = StyleSheet.create({
   stage: { ...StyleSheet.absoluteFillObject, bottom: 20 },
   dip: { backgroundColor: "#000" },
   flash: { backgroundColor: "#fff8e7" },
-  topBar: { position: "absolute", top: 0, left: 0, right: 0, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
-  exit: { minHeight: 44, justifyContent: "center" },
-  exitText: { color: colors.text, fontSize: 15, textShadowColor: "rgba(0,0,0,0.9)", textShadowRadius: 6 },
+  topBar: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center", paddingTop: 8 },
+  // About the height of the character's head (the sprite fills 90% of the stage).
+  menu: { position: "absolute", top: "12%", left: 0, right: 0 },
+  hint: { position: "absolute", top: "13%", left: 24, right: 24, alignItems: "center" },
+  hintText: {
+    color: colors.text,
+    fontSize: 13,
+    textAlign: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "rgba(20,16,13,0.8)",
+  },
+  autoLine: { position: "absolute", left: 20, right: 20, bottom: 0, height: 2, backgroundColor: colors.accent },
   modeBadge: { color: colors.accent, fontSize: 12, letterSpacing: 0.4, textShadowColor: "rgba(0,0,0,0.9)", textShadowRadius: 6 },
-  // Anchored a little above the waist line's on-screen position, overlaying the character's
-  // lower body instead of pushing the sprite up.
-  foreground: { position: "absolute", left: 0, right: 0, top: "47%", bottom: 0, justifyContent: "flex-start" },
+  // Anchored at the waist line's on-screen position (tuned by eye with the owner), overlaying
+  // the character's lower body instead of pushing the sprite up.
+  foreground: { position: "absolute", left: 0, right: 0, top: "51%", bottom: 0, justifyContent: "flex-start" },
   tapArea: { paddingHorizontal: 16, paddingBottom: 32 },
   dialogueBox: {
     borderRadius: radius.lg,

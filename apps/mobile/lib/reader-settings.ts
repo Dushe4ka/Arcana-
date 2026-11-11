@@ -6,8 +6,12 @@ import { create } from "zustand";
 export type ReaderSettings = {
   /** Characters per second for the typewriter; 0 shows each line at once. */
   textSpeed: number;
-  /** Pause after a line finishes before auto-play moves on, in ms. */
-  autoDelayMs: number;
+  /** Auto-tap timer in seconds. 0 = automatic: the pause is derived from the length of the
+   * line on screen and an average reading speed, so short lines pass quickly and long ones
+   * stay long enough to be read. */
+  autoTapSeconds: number;
+  /** One-time hint about the hidden top menu has been shown. */
+  menuHintSeen: boolean;
   fontScale: number;
   /** Opacity of the dialogue panel background, 0.5-1. */
   boxOpacity: number;
@@ -20,7 +24,8 @@ export type ReaderSettings = {
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   textSpeed: 45,
-  autoDelayMs: 1800,
+  autoTapSeconds: 0,
+  menuHintSeen: false,
   fontScale: 1,
   boxOpacity: 0.9,
   musicVolume: 0.7,
@@ -35,6 +40,28 @@ export const TEXT_SPEEDS = [
   { value: 90, label: "Быстро" },
   { value: 0, label: "Сразу" },
 ] as const;
+
+export const AUTO_TAP_OPTIONS = [
+  { value: 0, label: "Авто" },
+  { value: 2, label: "2 с" },
+  { value: 4, label: "4 с" },
+  { value: 6, label: "6 с" },
+  { value: 10, label: "10 с" },
+] as const;
+
+/** Average silent reading speed for Russian prose is roughly 1000-1200 characters a minute;
+ * 17 characters per second sits in the middle of that range. */
+const READING_CHARS_PER_SECOND = 17;
+
+/** How long a fully shown line stays on screen before the auto-tap fires, in ms. */
+export function autoTapDelayMs(text: string, autoTapSeconds: number): number {
+  if (autoTapSeconds > 0) return autoTapSeconds * 1000;
+  const reading = (text.length / READING_CHARS_PER_SECOND) * 1000;
+  return Math.min(12000, Math.max(1200, 700 + reading));
+}
+
+/** Fast-forward speeds: pause per line in ms. Lines appear whole at both speeds. */
+export const FAST_FORWARD = { fast: 420, veryFast: 90 } as const;
 
 export const FONT_SCALES = [
   { value: 0.9, label: "Мелкий" },
