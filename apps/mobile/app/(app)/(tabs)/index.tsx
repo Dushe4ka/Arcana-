@@ -13,7 +13,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { STORY_GENRES, type StoryGenre } from "@arcana/shared";
 
 import { Bookcase } from "../../../components/Bookcase";
-import { CinemaSky } from "../../../components/CinemaSky";
+import { CinemaHall } from "../../../components/CinemaHall";
 import { ContinueSection } from "../../../components/ContinueSection";
 import { GenreTabs } from "../../../components/GenreTabs";
 import { HomeBackground } from "../../../components/HomeBackground";
@@ -224,7 +224,7 @@ export default function CatalogScreen() {
             </View>
           </>
         ) : (
-          <CinemaSky stories={series} onPressStory={openStory} />
+          <CinemaHall stories={series} onPressStory={openStory} />
         )}
       </ScrollView>
     </View>

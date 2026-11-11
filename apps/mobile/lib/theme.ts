@@ -46,6 +46,8 @@ export const homeGradient = ["#241a15", "#6f5348", "#9c7768", "#6a4d3f", "#20171
 export const fonts = {
   displaySemiBold: "PlayfairDisplay_600SemiBold",
   displayBold: "PlayfairDisplay_700Bold",
+  /** The cinema hall's poster voice: big bold italics set over the image. */
+  poster: "PlayfairDisplay_700Bold_Italic",
   /** The "Гримуар" voice of the library: an old-book serif for shelf plaques, section
    * headings and titles on the home screen. */
   grimoire: "CormorantGaramond_600SemiBold",

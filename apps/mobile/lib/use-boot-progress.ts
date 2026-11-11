@@ -6,7 +6,12 @@ import {
   CormorantGaramond_600SemiBold,
   CormorantGaramond_700Bold,
 } from "@expo-google-fonts/cormorant-garamond";
-import { PlayfairDisplay_600SemiBold, PlayfairDisplay_700Bold, useFonts } from "@expo-google-fonts/playfair-display";
+import {
+  PlayfairDisplay_600SemiBold,
+  PlayfairDisplay_700Bold,
+  PlayfairDisplay_700Bold_Italic,
+  useFonts,
+} from "@expo-google-fonts/playfair-display";
 
 import heroImage from "../assets/images/login-hero.jpg";
 import logoImage from "../assets/images/arcana-logo.png";
@@ -28,6 +33,7 @@ export function useBootProgress(): { progress: Animated.Value; ready: boolean } 
   const [fontsLoaded] = useFonts({
     PlayfairDisplay_600SemiBold,
     PlayfairDisplay_700Bold,
+    PlayfairDisplay_700Bold_Italic,
     CormorantGaramond_600SemiBold,
     CormorantGaramond_700Bold,
     CormorantGaramond_500Medium_Italic,
