@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { LocalizationSection } from "@/components/LocalizationSection";
+import { StoryImportSection } from "@/components/StoryImportSection";
 import { useParams, useRouter } from "next/navigation";
 import { seasonCreateSchema, chapterCreateSchema } from "@arcana/shared";
 
@@ -95,6 +96,8 @@ export default function StoryDetailPage() {
       {mutationError && <p className="text-sm text-red-600">{mutationError}</p>}
 
       <ImageUpload label="Обложка" currentUrl={story.coverImageUrl} onUploaded={onCoverUploaded} />
+
+      <StoryImportSection storyId={story.id} characters={story.characters} onImported={load} />
 
       <SeasonsSection storyId={story.id} seasons={story.seasons} onChanged={load} />
 

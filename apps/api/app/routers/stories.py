@@ -171,7 +171,7 @@ async def delete_chapter(chapter_id: str, db: AsyncSession = Depends(get_db)):
 
 
 class ScriptImportInput(CamelModel):
-    text: str = Field(min_length=1, max_length=400_000)
+    text: str = Field(min_length=1, max_length=2_400_000)
     # Speaker name as written in the script -> character id, "__create__" or "__narrator__".
     speakers: dict[str, str] = Field(default_factory=dict)
 
@@ -195,6 +195,19 @@ async def preview_script_import(chapter_id: str, body: ScriptImportInput, db: As
 @router.post("/chapters/{chapter_id}/import", status_code=status.HTTP_201_CREATED)
 async def commit_script_import(chapter_id: str, body: ScriptImportInput, db: AsyncSession = Depends(get_db)):
     return await import_service.commit(db, chapter_id, body.text, body.speakers)
+
+
+@router.post("/stories/{story_id}/import/preview")
+async def preview_story_import(story_id: str, body: ScriptImportInput, db: AsyncSession = Depends(get_db)):
+    """Parses a whole-story document (season and chapter headings) and reports, chapter by
+    chapter, what would be created. Saves nothing."""
+    return await import_service.preview_story(db, story_id, body.text)
+
+
+@router.post("/stories/{story_id}/import", status_code=status.HTTP_201_CREATED)
+async def commit_story_import(story_id: str, body: ScriptImportInput, db: AsyncSession = Depends(get_db)):
+    """Creates the document's seasons and chapters as drafts and fills them. All or nothing."""
+    return await import_service.commit_story(db, story_id, body.text, body.speakers)
 
 
 # --- Localization ------------------------------------------------------------------------
