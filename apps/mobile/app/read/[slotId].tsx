@@ -20,7 +20,11 @@ import { Button } from "../../components/Button";
 import { Atmosphere } from "../../components/reader/Atmosphere";
 import { DialogueLog } from "../../components/reader/DialogueLog";
 import { ReaderSettingsSheet } from "../../components/reader/ReaderSettingsSheet";
-import { ReaderToolbar, type SkipMode, type ToolbarAction } from "../../components/reader/ReaderToolbar";
+import {
+  ReaderToolbar,
+  type SkipMode,
+  type ToolbarAction,
+} from "../../components/reader/ReaderToolbar";
 import { StageSprite } from "../../components/reader/StageSprite";
 import { useTypewriter } from "../../components/reader/useTypewriter";
 import { apiRequest, ApiError } from "../../lib/api";
@@ -29,7 +33,13 @@ import { costLabel, CURRENCY } from "../../lib/currency";
 import { t } from "../../lib/locale";
 import { autoTapDelayMs, FAST_FORWARD, useReaderSettings } from "../../lib/reader-settings";
 import { colors, fonts, radius } from "../../lib/theme";
-import type { ChoiceOptionView, ChoiceView, DialogueView, EndView, PlayView } from "../../lib/types";
+import type {
+  ChoiceOptionView,
+  ChoiceView,
+  DialogueView,
+  EndView,
+  PlayView,
+} from "../../lib/types";
 import { useWalletStore } from "../../lib/wallet-store";
 
 // A tap in this top share of the screen opens the menu instead of advancing the story.
@@ -71,7 +81,9 @@ export default function ReadingScreen() {
   const fadeBox = useCallback(
     (toValue: number, duration: number) =>
       new Promise<void>((resolve) => {
-        Animated.timing(boxOpacity, { toValue, duration, useNativeDriver: true }).start(() => resolve());
+        Animated.timing(boxOpacity, { toValue, duration, useNativeDriver: true }).start(() =>
+          resolve(),
+        );
       }),
     [boxOpacity],
   );
@@ -85,7 +97,8 @@ export default function ReadingScreen() {
       const next = {
         ...received,
         stage: received.stage ?? {
-          backgroundUrl: (received as { backgroundImageUrl?: string | null }).backgroundImageUrl ?? null,
+          backgroundUrl:
+            (received as { backgroundImageUrl?: string | null }).backgroundImageUrl ?? null,
           music: null,
           atmosphere: null,
           camera: null,
@@ -111,7 +124,14 @@ export default function ReadingScreen() {
           useNativeDriver: true,
         }),
         Animated.timing(cameraPan, {
-          toValue: s.reduceMotion || !camera ? 0 : camera.focus === "left" ? 1 : camera.focus === "right" ? -1 : 0,
+          toValue:
+            s.reduceMotion || !camera
+              ? 0
+              : camera.focus === "left"
+                ? 1
+                : camera.focus === "right"
+                  ? -1
+                  : 0,
           duration,
           easing: Easing.inOut(Easing.cubic),
           useNativeDriver: true,
@@ -130,18 +150,27 @@ export default function ReadingScreen() {
       if (s.reduceMotion) return;
       if (effect === "shake") {
         Animated.sequence(
-          [9, -9, 6, -6, 3, 0].map((x) => Animated.timing(shake, { toValue: x, duration: 50, useNativeDriver: true })),
+          [9, -9, 6, -6, 3, 0].map((x) =>
+            Animated.timing(shake, { toValue: x, duration: 50, useNativeDriver: true }),
+          ),
         ).start();
       } else if (effect === "flash") {
         flash.setValue(0.85);
         Animated.timing(flash, { toValue: 0, duration: 420, useNativeDriver: true }).start();
       } else if (effect === "heartbeat") {
         Animated.sequence(
-          [1.025, 1, 1.018, 1].map((v) => Animated.timing(pulse, { toValue: v, duration: 130, useNativeDriver: true })),
+          [1.025, 1, 1.018, 1].map((v) =>
+            Animated.timing(pulse, { toValue: v, duration: 130, useNativeDriver: true }),
+          ),
         ).start();
       } else if (effect === "blur_in") {
         dip.setValue(0.9);
-        Animated.timing(dip, { toValue: 0, duration: 900, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
+        Animated.timing(dip, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }).start();
       }
     },
     [cameraPan, cameraZoom, dip, flash, pulse, shake],
@@ -195,7 +224,10 @@ export default function ReadingScreen() {
       } catch (err) {
         setAuto(false);
         setSkip("off");
-        Alert.alert("Не получилось", err instanceof ApiError ? err.message : "Проверьте соединение и попробуйте ещё раз");
+        Alert.alert(
+          "Не получилось",
+          err instanceof ApiError ? err.message : "Проверьте соединение и попробуйте ещё раз",
+        );
         return false;
       } finally {
         if (!opts.quiet) await fadeBox(1, 140);
@@ -223,7 +255,10 @@ export default function ReadingScreen() {
   const onTapStage = (event?: GestureResponderEvent) => {
     if (uiHidden) return setUiHidden(false);
     // The upper part of the screen belongs to the menu: tap to bring it in, tap to dismiss.
-    if (event && event.nativeEvent.pageY < screenHeight * MENU_ZONE) return setMenuOpen((open) => !open);
+    if (event && event.nativeEvent.pageY < screenHeight * MENU_ZONE) {
+      setHint(false);
+      return setMenuOpen((open) => !open);
+    }
     if (menuOpen) return setMenuOpen(false);
     if (skipping) return setSkip("off");
     if (auto) setAuto(false);
@@ -240,18 +275,27 @@ export default function ReadingScreen() {
   }, [menuOpen, logOpen, settingsOpen, auto, skip]);
 
   // Shown once ever: the menu is hidden, so a new reader has to be told where it is.
+  // Marking it as seen flips `hintDue` back to false, so the hide timer must not live in
+  // this effect's cleanup - it is kept in a ref and cleared only when the screen closes.
   const hintDue = settings.hydrated && !settings.menuHintSeen && !loading;
   const markHintSeen = settings.update;
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!hintDue) return;
     setHint(true);
     markHintSeen({ menuHintSeen: true });
-    const timer = setTimeout(() => setHint(false), 5000);
-    return () => clearTimeout(timer);
+    hintTimer.current = setTimeout(() => setHint(false), 5000);
   }, [hintDue, markHintSeen]);
+  useEffect(
+    () => () => {
+      if (hintTimer.current) clearTimeout(hintTimer.current);
+    },
+    [],
+  );
 
   const autoDelay = autoTapDelayMs(fullText, settings.autoTapSeconds);
-  const autoWaiting = auto && Boolean(dialogue?.canAdvance) && typer.done && !busy && !logOpen && !settingsOpen;
+  const autoWaiting =
+    auto && Boolean(dialogue?.canAdvance) && typer.done && !busy && !logOpen && !settingsOpen;
 
   // Auto-tap: once a line is fully shown, wait as long as it takes to read it, then tap.
   useEffect(() => {
@@ -373,8 +417,14 @@ export default function ReadingScreen() {
         <Atmosphere kind={stage.atmosphere} reduceMotion={reduceMotion} />
       </Animated.View>
 
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dip, { opacity: dip }]} />
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.flash, { opacity: flash }]} />
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.dip, { opacity: dip }]}
+      />
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, styles.flash, { opacity: flash }]}
+      />
 
       {/* The whole screen advances the story; controls below sit on top of this layer. */}
       <Pressable
@@ -456,13 +506,21 @@ export default function ReadingScreen() {
               router.replace(`/read/${next.saveSlot.id}`);
               present(next);
             } catch (err) {
-              Alert.alert("Глава пока недоступна", err instanceof ApiError ? err.message : "Попробуйте ещё раз");
+              Alert.alert(
+                "Глава пока недоступна",
+                err instanceof ApiError ? err.message : "Попробуйте ещё раз",
+              );
             }
           }}
         />
       )}
 
-      <DialogueLog slotId={slotId} visible={logOpen} fontScale={settings.fontScale} onClose={() => setLogOpen(false)} />
+      <DialogueLog
+        slotId={slotId}
+        visible={logOpen}
+        fontScale={settings.fontScale}
+        onClose={() => setLogOpen(false)}
+      />
       <ReaderSettingsSheet visible={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </View>
   );
@@ -479,7 +537,11 @@ function CrossfadeImage({ uri, instant }: { uri: string | null; instant: boolean
   useEffect(() => {
     if (uri === shown) return;
     if (!uri) {
-      Animated.timing(opacity, { toValue: 0, duration: instant ? 0 : 400, useNativeDriver: true }).start(() => {
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: instant ? 0 : 400,
+        useNativeDriver: true,
+      }).start(() => {
         setShown(null);
       });
       return;
@@ -494,16 +556,22 @@ function CrossfadeImage({ uri, instant }: { uri: string | null; instant: boolean
   }, [uri]);
 
   const onIncomingLoaded = () => {
-    Animated.timing(incomingOpacity, { toValue: 1, duration: 450, useNativeDriver: true }).start(() => {
-      setShown(incoming);
-      setIncoming(null);
-    });
+    Animated.timing(incomingOpacity, { toValue: 1, duration: 450, useNativeDriver: true }).start(
+      () => {
+        setShown(incoming);
+        setIncoming(null);
+      },
+    );
   };
 
   return (
     <>
       {shown ? (
-        <Animated.Image source={{ uri: shown }} style={[StyleSheet.absoluteFill, { opacity }]} resizeMode="cover" />
+        <Animated.Image
+          source={{ uri: shown }}
+          style={[StyleSheet.absoluteFill, { opacity }]}
+          resizeMode="cover"
+        />
       ) : null}
       {incoming ? (
         <Animated.Image
@@ -570,7 +638,9 @@ function DialogueBox({
       accessibilityLabel={`${view.speaker ? `${t(view.speaker.name)}: ` : ""}${fullText}`}
     >
       {view.speaker ? (
-        <Text style={[styles.speakerName, { color: view.speaker.nameColor, fontSize: 15 * fontScale }]}>
+        <Text
+          style={[styles.speakerName, { color: view.speaker.nameColor, fontSize: 15 * fontScale }]}
+        >
           {t(view.speaker.name)}
         </Text>
       ) : null}
@@ -579,14 +649,24 @@ function DialogueBox({
       <View>
         <Text style={[styles.dialogueText, { fontSize, lineHeight, opacity: 0 }]}>{fullText}</Text>
         <Text
-          style={[styles.dialogueText, styles.typed, { fontSize, lineHeight }, view.isThought && styles.thoughtText]}
+          style={[
+            styles.dialogueText,
+            styles.typed,
+            { fontSize, lineHeight },
+            view.isThought && styles.thoughtText,
+          ]}
         >
           {text}
         </Text>
       </View>
       <Text style={[styles.advanceHint, !(done && view.canAdvance) && styles.hidden]}>▼</Text>
       {/* Auto-tap countdown: a thin gold line that burns down until the next tap. */}
-      <Animated.View style={[styles.autoLine, { opacity: autoMs === null ? 0 : 1, transform: [{ scaleX: countdown }] }]} />
+      <Animated.View
+        style={[
+          styles.autoLine,
+          { opacity: autoMs === null ? 0 : 1, transform: [{ scaleX: countdown }] },
+        ]}
+      />
     </View>
   );
 }
@@ -606,7 +686,9 @@ function ChoicePanel({
 }) {
   const { fontScale } = useReaderSettings();
   const remaining = useRef(new Animated.Value(1)).current;
-  const timeoutOption = view.timerSeconds ? view.options.find((o) => o.id === view.timeoutOptionId) : undefined;
+  const timeoutOption = view.timerSeconds
+    ? view.options.find((o) => o.id === view.timeoutOptionId)
+    : undefined;
 
   // The countdown restarts from full whenever the reader comes back from the log/settings:
   // it is there for tension, not to punish someone for adjusting the font size.
@@ -627,7 +709,9 @@ function ChoicePanel({
 
   return (
     <View style={styles.choicePanel}>
-      {view.prompt ? <Text style={[styles.choicePrompt, { fontSize: 16 * fontScale }]}>{t(view.prompt)}</Text> : null}
+      {view.prompt ? (
+        <Text style={[styles.choicePrompt, { fontSize: 16 * fontScale }]}>{t(view.prompt)}</Text>
+      ) : null}
       {view.timerSeconds && timeoutOption ? (
         <View style={styles.timerTrack} accessibilityLabel={`На выбор ${view.timerSeconds} секунд`}>
           <Animated.View style={[styles.timerFill, { transform: [{ scaleX: remaining }] }]} />
@@ -650,7 +734,9 @@ function ChoicePanel({
               pressed && styles.choiceOptionPressed,
             ]}
           >
-            <Text style={[styles.choiceOptionText, { fontSize: 15 * fontScale }]}>{t(option.text)}</Text>
+            <Text style={[styles.choiceOptionText, { fontSize: 15 * fontScale }]}>
+              {t(option.text)}
+            </Text>
             {paid ? (
               <Text style={[styles.choiceOptionCost, option.owned && styles.choiceOwned]}>
                 {option.owned
@@ -662,7 +748,9 @@ function ChoicePanel({
         );
       })}
       {view.options.length === 0 ? (
-        <Text style={styles.choicePrompt}>Здесь пока нет доступных вариантов. Вернитесь на шаг назад.</Text>
+        <Text style={styles.choicePrompt}>
+          Здесь пока нет доступных вариантов. Вернитесь на шаг назад.
+        </Text>
       ) : null}
     </View>
   );
@@ -681,10 +769,18 @@ function EndPanel({
 }) {
   const appear = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(appear, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    Animated.timing(appear, {
+      toValue: 1,
+      duration: 700,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
   }, [appear]);
   const { rewards, nextChapter } = view;
-  const earned = [rewards.xp > 0 ? `+${rewards.xp} опыта` : null, rewards.soft > 0 ? `+${rewards.soft} зёрен` : null]
+  const earned = [
+    rewards.xp > 0 ? `+${rewards.xp} опыта` : null,
+    rewards.soft > 0 ? `+${rewards.soft} зёрен` : null,
+  ]
     .filter(Boolean)
     .join("  ·  ");
 
@@ -693,7 +789,9 @@ function EndPanel({
       <SafeAreaView style={styles.endPanel}>
         <View style={styles.endRule} />
         <Text style={styles.endEyebrow}>Глава завершена</Text>
-        <Text style={styles.endTitle}>{view.endingTitle ? t(view.endingTitle) : "Продолжение следует"}</Text>
+        <Text style={styles.endTitle}>
+          {view.endingTitle ? t(view.endingTitle) : "Продолжение следует"}
+        </Text>
         {earned ? <Text style={styles.endRewards}>{earned}</Text> : null}
         <View style={styles.endRule} />
         <View style={styles.endActions}>
@@ -710,7 +808,12 @@ function EndPanel({
           ) : (
             <Text style={styles.endNote}>Новые главы уже пишутся — загляните позже.</Text>
           )}
-          <Button title="Пройти главу заново" onPress={onReplay} variant="secondary" disabled={busy} />
+          <Button
+            title="Пройти главу заново"
+            onPress={onReplay}
+            variant="secondary"
+            disabled={busy}
+          />
           <Button title="К списку глав" onPress={() => router.back()} variant="secondary" />
         </View>
       </SafeAreaView>
@@ -748,11 +851,31 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "rgba(20,16,13,0.8)",
   },
-  autoLine: { position: "absolute", left: 20, right: 20, bottom: 0, height: 2, backgroundColor: colors.accent },
-  modeBadge: { color: colors.accent, fontSize: 12, letterSpacing: 0.4, textShadowColor: "rgba(0,0,0,0.9)", textShadowRadius: 6 },
+  autoLine: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+    bottom: 0,
+    height: 2,
+    backgroundColor: colors.accent,
+  },
+  modeBadge: {
+    color: colors.accent,
+    fontSize: 12,
+    letterSpacing: 0.4,
+    textShadowColor: "rgba(0,0,0,0.9)",
+    textShadowRadius: 6,
+  },
   // Anchored at the waist line's on-screen position (tuned by eye with the owner), overlaying
   // the character's lower body instead of pushing the sprite up.
-  foreground: { position: "absolute", left: 0, right: 0, top: "51%", bottom: 0, justifyContent: "flex-start" },
+  foreground: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: "51%",
+    bottom: 0,
+    justifyContent: "flex-start",
+  },
   tapArea: { paddingHorizontal: 16, paddingBottom: 32 },
   dialogueBox: {
     borderRadius: radius.lg,
@@ -781,7 +904,12 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.9)",
     textShadowRadius: 8,
   },
-  timerTrack: { height: 2, backgroundColor: "rgba(243,236,224,0.18)", borderRadius: 1, overflow: "hidden" },
+  timerTrack: {
+    height: 2,
+    backgroundColor: "rgba(243,236,224,0.18)",
+    borderRadius: 1,
+    overflow: "hidden",
+  },
   timerFill: { flex: 1, backgroundColor: colors.accent },
   choiceOption: {
     backgroundColor: "rgba(31,26,22,0.94)",
@@ -803,10 +931,28 @@ const styles = StyleSheet.create({
   choiceOptionCost: { color: colors.accent, fontSize: 13, fontWeight: "600" },
   choiceOwned: { color: colors.textMuted, fontWeight: "400" },
   endScrim: { backgroundColor: "rgba(16,13,11,0.9)" },
-  endPanel: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 28, gap: 14 },
+  endPanel: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+    gap: 14,
+  },
   endRule: { width: 56, height: StyleSheet.hairlineWidth * 2, backgroundColor: colors.accent },
-  endEyebrow: { color: colors.accentMuted, fontSize: 12, letterSpacing: 2, textTransform: "uppercase", marginTop: 10 },
-  endTitle: { color: colors.text, fontSize: 28, lineHeight: 36, textAlign: "center", fontFamily: fonts.displaySemiBold },
+  endEyebrow: {
+    color: colors.accentMuted,
+    fontSize: 12,
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginTop: 10,
+  },
+  endTitle: {
+    color: colors.text,
+    fontSize: 28,
+    lineHeight: 36,
+    textAlign: "center",
+    fontFamily: fonts.displaySemiBold,
+  },
   endRewards: { color: colors.accent, fontSize: 15, marginBottom: 10 },
   endNote: { color: colors.textMuted, textAlign: "center", fontSize: 14, lineHeight: 20 },
   endActions: { alignSelf: "stretch", gap: 12, marginTop: 22 },

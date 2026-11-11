@@ -42,8 +42,8 @@ const FADE_STEP_MS = 50;
 class AudioEngine {
   private music: { player: Player; url: string; base: number } | null = null;
   private fades = new Map<Player, ReturnType<typeof setInterval>>();
-  private musicVolume = 0.7;
-  private sfxVolume = 0.9;
+  private musicVolume = 0.75;
+  private sfxVolume = 1;
   private paused = false;
 
   setVolumes(music: number, sfx: number) {

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  LayoutChangeEvent,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -19,7 +18,6 @@ import { ContinueSection } from "../../../components/ContinueSection";
 import { GenreTabs } from "../../../components/GenreTabs";
 import { HomeBackground } from "../../../components/HomeBackground";
 import { HomeHeader } from "../../../components/HomeHeader";
-import { LibraryShelf } from "../../../components/LibraryShelf";
 import { apiRequest, ApiError } from "../../../lib/api";
 import { useAuthStore } from "../../../lib/auth-store";
 import { useFavoritesStore } from "../../../lib/favorites-store";
@@ -149,10 +147,6 @@ export default function CatalogScreen() {
     }
   };
 
-  const onShelfLayout = (genre: StoryGenre) => (e: LayoutChangeEvent) => {
-    shelfOffsets.current[genre] = { y: e.nativeEvent.layout.y, height: e.nativeEvent.layout.height };
-  };
-
   if (loading) {
     return (
       <View style={styles.center}>
@@ -207,31 +201,26 @@ export default function CatalogScreen() {
 
             <View
               onLayout={(e) => {
-                shelvesTop.current = e.nativeEvent.layout.y + 56;
+                shelvesTop.current = e.nativeEvent.layout.y;
               }}
             >
-              <Bookcase>
-                <LibraryShelf
-                  label="Продолжить чтение"
-                  category="continue"
-                  stories={continueStories.filter((story) => story.format !== "SERIES")}
-                  onPressStory={openStory}
-                  showBadge={false}
-                />
-                <LibraryShelf
-                  label="Избранное"
-                  category="favorites"
-                  stories={favoriteStories}
-                  onPressStory={openStory}
-                  showBadge={false}
-                />
-                {STORY_GENRES.filter((genre) => byGenre[genre].length > 0).map((genre) => (
-                  <View key={genre} onLayout={onShelfLayout(genre)}>
-                    <LibraryShelf label={GENRE_LABELS[genre]} category={genre} stories={byGenre[genre]} onPressStory={openStory} />
-                  </View>
-                ))}
-                {novels.length === 0 && !error ? <Text style={styles.empty}>Полки ждут первых историй</Text> : null}
-              </Bookcase>
+              <Bookcase
+                shelves={[
+                  {
+                    category: "continue",
+                    label: "Продолжить",
+                    stories: continueStories.filter((story) => story.format !== "SERIES"),
+                    showBadge: false,
+                  },
+                  { category: "favorites", label: "Избранное", stories: favoriteStories, showBadge: false },
+                  ...STORY_GENRES.map((genre) => ({ category: genre, label: GENRE_LABELS[genre], stories: byGenre[genre] })),
+                ]}
+                onPressStory={openStory}
+                onShelfLayout={(category, y, height) => {
+                  shelfOffsets.current[category as StoryGenre] = { y, height };
+                }}
+              />
+              {novels.length === 0 && !error ? <Text style={styles.empty}>Полки ждут первых историй</Text> : null}
             </View>
           </>
         ) : (

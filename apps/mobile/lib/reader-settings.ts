@@ -28,8 +28,8 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
   menuHintSeen: false,
   fontScale: 1,
   boxOpacity: 0.9,
-  musicVolume: 0.7,
-  sfxVolume: 0.9,
+  musicVolume: 0.75,
+  sfxVolume: 1,
   reduceMotion: false,
   vibration: true,
 };
