@@ -124,6 +124,10 @@ class ChoiceOption(Base, UUIDPKMixin, TimestampMixin):
     # EffectList - applied when this option is chosen.
     effects: Mapped[list] = mapped_column(JSONB, default=list)
     next_node_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # Graph editor position (admin panel only): in the story graph every option is its own
+    # node. Null until an author drags it; never read by the reading engine.
+    canvas_x: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    canvas_y: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     node: Mapped[SceneNode] = relationship(back_populates="choice_options")
 

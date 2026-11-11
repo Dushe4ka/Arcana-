@@ -304,3 +304,5 @@ class ChoiceOptionUpdateInput(CamelModel):
     visible_when: ConditionGroup | None = None
     effects: EffectList | None = None
     next_node_id: str | None = None
+    canvas_x: int | None = None
+    canvas_y: int | None = None

@@ -23,6 +23,7 @@ from app.schemas.responses import (
 )
 from app.services import (
     analytics_service,
+    graph_service,
     import_service,
     localization_service,
     publications_service,
@@ -53,6 +54,13 @@ async def get_story(story_id: str, db: AsyncSession = Depends(get_db)):
 @router.get("/stories/{story_id}/variable-usages", response_model=list[VariableUsageOut])
 async def list_variable_usages(story_id: str, db: AsyncSession = Depends(get_db)):
     return await variable_usage_service.list_usages(db, story_id)
+
+
+@router.get("/stories/{story_id}/graph")
+async def story_graph(story_id: str, db: AsyncSession = Depends(get_db)):
+    """Every node of the story, direct transitions between them, and deferred consequences
+    (a decision changing a variable that a later event checks)."""
+    return await graph_service.story_graph(db, story_id)
 
 
 @router.get("/stories/{story_id}/analytics")

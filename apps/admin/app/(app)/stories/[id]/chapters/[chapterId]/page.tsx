@@ -14,7 +14,6 @@ import { NarrativeQaPanel } from "@/components/NarrativeQaPanel";
 import { NodeEditorPanel } from "@/components/NodeEditorPanel";
 import { PublicationBar } from "@/components/PublicationBar";
 import { QuickAddToolbar } from "@/components/QuickAddToolbar";
-import { SceneGraphView } from "@/components/SceneGraphView";
 import { ScriptImportPanel } from "@/components/ScriptImportPanel";
 import { VariableReferencesPanel } from "@/components/VariableReferencesPanel";
 
@@ -33,7 +32,10 @@ export default function SceneEditorPage() {
   const [variableDefinitions, setVariableDefinitions] = useState<VariableDefinitionOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [view, setView] = useState<"list" | "graph" | "characters" | "variables" | "qa" | "import">("list");
+  const [view, setView] = useState<"list" | "characters" | "variables" | "qa" | "import">("list");
+
+  const graphHref = (nodeId?: string | null, targetChapterId: string = chapterId) =>
+    `/stories/${storyId}/graph?chapter=${targetChapterId}&view=chapter${nodeId ? `&node=${nodeId}` : ""}`;
 
   // `?view=graph&node=<id>` on initial load - written by `VariableReferencesPanel`'s "Перейти"
   // for a CROSS-chapter usage (a real navigation to this page), so a scenarist landing here from
@@ -47,12 +49,15 @@ export default function SceneEditorPage() {
     const requestedView = searchParams.get("view");
     const requestedNode = searchParams.get("node");
     if (requestedView === "graph") {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time URL->state sync on mount, not a fetch
-      setView("graph");
+      // The graph lives in its own full-width workspace now; old deep links keep working.
+      router.replace(graphHref(requestedNode));
+      return;
     }
     if (requestedNode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time URL->state sync on mount
       setSelectedNodeId(requestedNode);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   // Single "Перейти" entry point handed down to `VariableReferencesPanel` - see that
@@ -63,12 +68,7 @@ export default function SceneEditorPage() {
   // target chapter's page with `?view=graph&node=` - handled by the effect above once that page
   // mounts.
   const onNavigateToUsage = (targetChapterId: string, nodeId: string) => {
-    if (targetChapterId === chapterId) {
-      setView("graph");
-      setSelectedNodeId(nodeId);
-    } else {
-      router.push(`/stories/${storyId}/chapters/${targetChapterId}?view=graph&node=${nodeId}`);
-    }
+    router.push(graphHref(nodeId, targetChapterId));
   };
 
   const load = async () => {
@@ -633,12 +633,9 @@ export default function SceneEditorPage() {
         >
           Список
         </button>
-        <button
-          onClick={() => setView("graph")}
-          className={view === "graph" ? "font-semibold underline" : "text-neutral-600"}
-        >
-          Граф
-        </button>
+        <Link href={graphHref()} className="text-neutral-600">
+          Граф ↗
+        </Link>
         <button
           onClick={() => setView("characters")}
           className={view === "characters" ? "font-semibold underline" : "text-neutral-600"}
@@ -717,18 +714,6 @@ export default function SceneEditorPage() {
           {nodes.length === 0 && <li className="px-4 py-3 text-sm text-neutral-500">Пока нет узлов</li>}
         </ul>
       )}
-      {view === "graph" && (
-        <SceneGraphView
-          nodes={nodes}
-          characters={characters}
-          storyId={storyId}
-          chapterId={chapterId}
-          entryNodeId={chapter.entryNodeId}
-          onNodesChanged={load}
-          selectedNodeId={selectedNodeId}
-          onSelectNode={setSelectedNodeId}
-        />
-      )}
       {view === "characters" && (
         <CharactersSection
           storyId={storyId}
@@ -742,10 +727,7 @@ export default function SceneEditorPage() {
         <NarrativeQaPanel
           chapterId={chapterId}
           nodes={nodes}
-          onNavigate={(nodeId) => {
-            setView("graph");
-            setSelectedNodeId(nodeId);
-          }}
+          onNavigate={(nodeId) => router.push(graphHref(nodeId))}
         />
       )}
       {view === "variables" && (

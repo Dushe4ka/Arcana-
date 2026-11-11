@@ -27,6 +27,8 @@ class ChoiceOptionOut(ORMModel):
     visible_when: list[dict[str, Any]]
     effects: list[dict[str, Any]]
     next_node_id: uuid.UUID | None
+    canvas_x: int | None = None
+    canvas_y: int | None = None
 
 
 class SceneNodeOut(ORMModel):
