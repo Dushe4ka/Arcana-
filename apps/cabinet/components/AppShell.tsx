@@ -7,7 +7,7 @@ type NavKey = "home" | "stats" | "shop";
 const NAV: { key: NavKey; href: Extract<CabinetRoute, "/" | "/stats" | "/shop">; label: string }[] = [
   { key: "home", href: "/", label: "Баланс" },
   { key: "stats", href: "/stats", label: "Статистика" },
-  { key: "shop", href: "/shop", label: "Кристаллы" },
+  { key: "shop", href: "/shop", label: "Карты" },
 ];
 
 export function AppShell({

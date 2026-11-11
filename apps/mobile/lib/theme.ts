@@ -46,4 +46,21 @@ export const homeGradient = ["#241a15", "#6f5348", "#9c7768", "#6a4d3f", "#20171
 export const fonts = {
   displaySemiBold: "PlayfairDisplay_600SemiBold",
   displayBold: "PlayfairDisplay_700Bold",
+  /** The "Гримуар" voice of the library: an old-book serif for shelf plaques, section
+   * headings and titles on the home screen. */
+  grimoire: "CormorantGaramond_600SemiBold",
+  grimoireBold: "CormorantGaramond_700Bold",
+  grimoireItalic: "CormorantGaramond_500Medium_Italic",
+};
+
+/** Bookcase woods - all inside the app's chocolate / coffee range, so the furniture
+ * belongs to the same room as the rest of the interface. */
+export const wood = {
+  shadow: "#150e09",
+  dark: "#22160e",
+  mid: "#3a2718",
+  light: "#553c26",
+  edge: "#7a5b3a",
+  brass: "#d4af6a",
+  brassDim: "#8a7550",
 };

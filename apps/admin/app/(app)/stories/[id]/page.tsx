@@ -76,6 +76,25 @@ export default function StoryDetailPage() {
           <p className="text-sm text-neutral-500">
             {story.slug} · {story.genre} · {story.status}
           </p>
+          <label className="mt-2 flex items-center gap-2 text-sm text-neutral-600">
+            Раздел в приложении
+            <select
+              value={story.format}
+              onChange={async (e) => {
+                try {
+                  await apiRequest(`/admin/stories/${story.id}`, { method: "PATCH", body: JSON.stringify({ format: e.target.value }) });
+                  setMutationError(null);
+                  load();
+                } catch (err) {
+                  setMutationError(err instanceof ApiError ? err.message : "Не удалось изменить раздел");
+                }
+              }}
+              className="rounded border border-neutral-300 px-2 py-1"
+            >
+              <option value="NOVEL">Библиотека (новелла)</option>
+              <option value="SERIES">Кинозал (мини-сериал)</option>
+            </select>
+          </label>
         </div>
         <div className="flex gap-2">
           <Link href={`/stories/${story.id}/graph?view=story`} className="rounded border border-neutral-300 px-3 py-2 text-sm">

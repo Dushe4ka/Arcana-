@@ -9,6 +9,7 @@ import { colors, radius } from "../../../lib/theme";
 import { useWalletStore } from "../../../lib/wallet-store";
 import { ApiError } from "../../../lib/api";
 import { openCabinet } from "../../../lib/cabinet";
+import { CURRENCY } from "../../../lib/currency";
 
 export default function ProfileScreen() {
   const user = useAuthStore((s) => s.user);
@@ -27,7 +28,7 @@ export default function ProfileScreen() {
       const result = await claimDaily();
       Alert.alert(
         "Награда получена!",
-        `День ${result.streak} подряд: +${result.reward.soft} монет`,
+        `День ${result.streak} подряд: +${result.reward.soft} зёрен`,
       );
     } catch (err) {
       Alert.alert("Не получилось", err instanceof ApiError ? err.message : "Попробуйте позже");
@@ -74,15 +75,15 @@ export default function ProfileScreen() {
             <Text style={styles.muted}>Загрузка…</Text>
           ) : wallet ? (
             <View style={styles.walletRow}>
-              <WalletStat label="Монеты" value={wallet.soft} color={colors.soft} />
-              <WalletStat label="Кристаллы" value={wallet.hard} color={colors.hard} />
-              <WalletStat label="Энергия" value={wallet.energy} color={colors.text} />
+              <WalletStat label={CURRENCY.SOFT.name} value={wallet.soft} color={colors.soft} />
+              <WalletStat label={CURRENCY.HARD.name} value={wallet.hard} color={colors.hard} />
+              <WalletStat label={CURRENCY.ENERGY.name} value={wallet.energy} color={colors.text} />
             </View>
           ) : (
             <Text style={styles.muted}>Не удалось загрузить</Text>
           )}
           <Button
-            title="Пополнить кристаллы"
+            title="Пополнить карты"
             onPress={() => onOpenCabinet("/shop")}
             loading={openingCabinet}
           />

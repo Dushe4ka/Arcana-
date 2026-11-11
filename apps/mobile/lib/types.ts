@@ -30,6 +30,8 @@ export type StorySummary = {
   coverImageUrl: string | null;
   status: string;
   genre: StoryGenre;
+  /** NOVEL lives in the library, SERIES in the cinema hall. */
+  format: "NOVEL" | "SERIES";
   createdAt: string;
 };
 

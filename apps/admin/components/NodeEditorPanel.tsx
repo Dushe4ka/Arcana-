@@ -744,8 +744,8 @@ function ChoiceOptionForm({
           className="rounded border border-neutral-300 px-2 py-1 text-sm"
         >
           <option value="">Бесплатно</option>
-          <option value="SOFT">Монеты</option>
-          <option value="HARD">Кристаллы</option>
+          <option value="SOFT">Зёрна</option>
+          <option value="HARD">Карты</option>
         </select>
         {costCurrency && (
           <input
@@ -940,7 +940,7 @@ function EndForm({ node, onSave }: { node: SceneNodeOut; onSave: (data: object) 
           />
         </label>
         <label className="block text-xs text-neutral-600">
-          Награда монетами за первое прохождение
+          Награда зёрнами за первое прохождение
           <input
             type="number"
             min={0}

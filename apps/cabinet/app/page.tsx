@@ -16,7 +16,7 @@ export default async function HomePage() {
           href="/shop"
           className="rounded-2xl bg-accent px-5 py-4 text-center font-semibold text-background transition-[filter] hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-reduce:transition-none"
         >
-          Пополнить кристаллы
+          Пополнить карты
         </Link>
         <Link
           href="/stats"

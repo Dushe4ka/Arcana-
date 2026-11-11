@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+import * as SecureStore from "./secure-storage";
 import { create } from "zustand";
 
 import { apiRequest, configureApi, ApiError } from "./api";

@@ -2,9 +2,9 @@ import { Card } from "@/components/Card";
 import type { WalletView } from "@/lib/types";
 
 const STATS: { key: "soft" | "hard" | "energy"; label: string; className: string }[] = [
-  { key: "soft", label: "Монеты", className: "text-coin" },
-  { key: "hard", label: "Кристаллы", className: "text-crystal" },
-  { key: "energy", label: "Энергия", className: "text-text" },
+  { key: "soft", label: "Зёрна", className: "text-coin" },
+  { key: "hard", label: "Карты", className: "text-crystal" },
+  { key: "energy", label: "Ключи", className: "text-text" },
 ];
 
 export function BalanceCard({ wallet }: { wallet: WalletView }) {

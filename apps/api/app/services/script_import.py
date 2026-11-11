@@ -17,7 +17,7 @@ docs/story-format.md; in short, one construct per line:
     ? Как ответить?                           starts a choice (the text is the prompt)
     - Улыбнуться {доверие(Адриан) +2} -> тепло          option with an effect
     - Взять за руку [если смелость >= 1] -> рука        option shown only on a condition
-    - Пригласить на танец [кристаллы 5] -> танец        paid option (кристаллы / монеты)
+    - Пригласить на танец [карты 5] -> танец            paid option (карты / зёрна)
     {ключ = да; смелость +1}                  changes characteristics / flags right here
     [если доверие(Адриан) >= 2] -> признание | иначе -> холод     branch on a condition
     == тепло ==                               label: the next line can be jumped to
@@ -63,7 +63,9 @@ _CONDITION_OPS = {
     "<": "LT",
     "=": "EQ",
 }
-_COST = re.compile(r"\[\s*(кристалл\w*|монет\w*|hard|soft|💎|🪙)\s*(\d+)\s*\]", re.IGNORECASE)
+_COST = re.compile(
+    r"\[\s*(карт\w*|з[ёе]р\w*|кристалл\w*|монет\w*|hard|soft|💎|🪙)\s*(\d+)\s*\]", re.IGNORECASE
+)
 _DIRECTION = re.compile(r"^@\s*([^:：]+?)\s*[:：]\s*(.+)$")
 
 _ATMOSPHERES = {

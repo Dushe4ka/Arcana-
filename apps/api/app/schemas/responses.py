@@ -132,6 +132,7 @@ class StoryOut(ORMModel):
     cover_image_url: str | None
     status: str
     genre: str
+    format: str = "NOVEL"
     is_test: bool = False
     created_at: datetime
     updated_at: datetime

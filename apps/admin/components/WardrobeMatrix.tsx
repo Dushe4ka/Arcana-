@@ -437,7 +437,7 @@ function OutfitColumnHeader({
 }) {
   const summary = outfitRow
     ? outfitRow.priceHard > 0
-      ? `${outfitRow.priceHard} 💎`
+      ? `${outfitRow.priceHard} ✦`
       : "Бесплатно"
     : null;
   const bonusCount = outfitRow?.statEffects.length ?? 0;
@@ -560,7 +560,7 @@ function OutfitPricingEditor({
         />
       </label>
       <label className="block text-[10px] text-neutral-600">
-        Цена в кристаллах
+        Цена в картах
         <input
           type="number"
           inputMode="numeric"

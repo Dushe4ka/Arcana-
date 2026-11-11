@@ -2,7 +2,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { STORY_GENRES, type StoryGenre } from "@arcana/shared";
 
 import { GlassSurface } from "./GlassSurface";
-import { colors, fonts, radius } from "../lib/theme";
+import { colors, fonts } from "../lib/theme";
 
 const GENRE_LABELS: Record<StoryGenre, string> = {
   FANTASY: "Фэнтези",
@@ -56,8 +56,8 @@ const styles = StyleSheet.create({
   },
   tab: {
     paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: radius.lg,
+    paddingVertical: 10,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: "rgba(243,236,224,0.22)",
   },
@@ -67,8 +67,9 @@ const styles = StyleSheet.create({
   },
   tabText: {
     color: colors.text,
-    fontSize: 14,
-    fontFamily: fonts.displaySemiBold,
+    fontSize: 16,
+    fontFamily: fonts.grimoire,
+    letterSpacing: 0.4,
   },
   tabTextActive: {
     color: colors.accent,

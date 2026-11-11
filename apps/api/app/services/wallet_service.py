@@ -69,7 +69,7 @@ async def spend_energy(db: AsyncSession, user_id: str, amount: int, *, commit: b
     wallet = await _get_wallet_by_user(db, user_id, for_update=True)
     _regen_in_place(wallet)
     if wallet.energy < amount:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно энергии для открытия этой главы")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Недостаточно ключей, чтобы открыть эту главу")
     if wallet.energy >= MAX_ENERGY:
         # Regen is measured from the moment energy first drops below the cap.
         wallet.energy_updated_at = datetime.now(UTC)
@@ -88,7 +88,7 @@ async def spend_currency(
     if balance < amount:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"Недостаточно {'монет' if currency == 'SOFT' else 'кристаллов'}",
+            f"Недостаточно {'зёрен' if currency == 'SOFT' else 'карт'}",
         )
 
     if currency == "SOFT":
@@ -192,7 +192,7 @@ async def claim_daily_reward(db: AsyncSession, user_id: str) -> dict:
 _REASON_LABELS = {
     "choice": "Платный выбор",
     "chapter_complete": "Награда за главу",
-    "yookassa": "Покупка кристаллов",
+    "yookassa": "Покупка карт",
     "daily_reward_day": "Ежедневная награда",
 }
 

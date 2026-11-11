@@ -60,7 +60,7 @@ export default function LibraryCategoryScreen() {
         } else if (category === "continue") {
           const [slots, catalog] = await Promise.all([
             apiRequest<SaveSlotListItem[]>("/play/save-slots"),
-            apiRequest<StorySummary[]>("/catalog/stories", { auth: false }),
+            apiRequest<StorySummary[]>("/catalog/stories"),
           ]);
           const byId = new Map(catalog.map((story) => [story.id, story]));
           const ordered = [...slots]
@@ -69,7 +69,7 @@ export default function LibraryCategoryScreen() {
             .filter((story): story is StorySummary => story !== undefined);
           if (!cancelled) setStories(ordered);
         } else if (category && isGenre(category)) {
-          const catalog = await apiRequest<StorySummary[]>("/catalog/stories", { auth: false });
+          const catalog = await apiRequest<StorySummary[]>("/catalog/stories");
           if (!cancelled) setStories(catalog.filter((story) => story.genre === category));
         } else {
           if (!cancelled) setStories([]);

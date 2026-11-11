@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Easing,
   Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -13,8 +14,11 @@ import {
 } from "react-native";
 
 import { GlassSurface } from "./GlassSurface";
+import { GrimoireHeading } from "./GrimoireHeading";
 import { MagicDust } from "./MagicDust";
-import { colors, fonts, radius } from "../lib/theme";
+import { SoftGlow } from "./SoftGlow";
+import { useReduceMotion } from "../lib/use-reduce-motion";
+import { colors, fonts } from "../lib/theme";
 import { t } from "../lib/locale";
 import type { SaveSlotListItem, StorySummary } from "../lib/types";
 
@@ -50,6 +54,26 @@ function FanCard({
   scrollX: Animated.Value;
   onPress: () => void;
 }) {
+  // Each book hovers on its own slow rhythm, so the fan looks suspended in the air rather
+  // than laid out: a few pixels up and down, out of step with its neighbours.
+  const still = useReduceMotion();
+  const hover = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (still) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(hover, { toValue: 1, duration: 2300 + (index % 4) * 420, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(hover, { toValue: 0, duration: 2300 + (index % 4) * 420, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    const timer = setTimeout(() => loop.start(), (index % 5) * 360);
+    return () => {
+      clearTimeout(timer);
+      loop.stop();
+    };
+  }, [hover, index, still]);
+  const hoverY = hover.interpolate({ inputRange: [0, 1], outputRange: [5, -7] });
+
   // Every transform is driven straight off the live scroll position instead
   // of a "which card is active" step function, so the fan re-poses smoothly
   // every frame while dragging/flinging instead of snapping only once
@@ -101,7 +125,13 @@ function FanCard({
             opacity,
             // perspective must lead, directly followed by the rotation it
             // applies to, for the 3D depth to actually take effect.
-            transform: [{ perspective: PERSPECTIVE }, { rotateY }, { rotateZ }, { translateY }, { scale }],
+            transform: [
+              { perspective: PERSPECTIVE },
+              { rotateY },
+              { rotateZ },
+              { translateY: Animated.add(translateY, hoverY) },
+              { scale },
+            ],
           },
         ]}
       >
@@ -110,6 +140,9 @@ function FanCard({
         ) : (
           <View style={[styles.cover, styles.coverFallback]} />
         )}
+        {/* Bound edge and gilded top, so the cover reads as a book, not a card. */}
+        <View style={styles.bookSpine} pointerEvents="none" />
+        <View style={styles.bookGilt} pointerEvents="none" />
       </Animated.View>
     </Pressable>
   );
@@ -249,13 +282,11 @@ export function ContinueSection({
 
   return (
     <View style={styles.section}>
-      <View style={styles.headingRow}>
-        <View style={styles.headingLine} />
-        <Text style={styles.heading}>Продолжи свою историю</Text>
-        <View style={styles.headingLine} />
-      </View>
+      <GrimoireHeading title="Продолжи свою историю" />
 
       <View style={styles.carouselWrap}>
+        {/* A pool of candlelight under the book in the centre. */}
+        <SoftGlow size={300} strength={0.045} style={styles.halo} />
         <MagicDust />
 
         <Animated.ScrollView
@@ -316,9 +347,9 @@ export function ContinueSection({
           </Text>
         </View>
         <Pressable onPress={() => onOpen(active)} style={({ pressed }) => [pressed && styles.readButtonPressed]}>
-          <GlassSurface style={styles.readButton} intensity={60} tintColor="rgba(194,147,143,0.78)">
+          <View style={styles.readButton}>
             <Text style={styles.readButtonText}>Читать</Text>
-          </GlassSurface>
+          </View>
         </Pressable>
       </GlassSurface>
     </View>
@@ -352,12 +383,23 @@ const styles = StyleSheet.create({
   carouselWrap: {
     justifyContent: "center",
   },
+  halo: { position: "absolute", alignSelf: "center" },
   card: {
-    borderRadius: radius.md,
+    borderTopLeftRadius: 3,
+    borderBottomLeftRadius: 3,
+    borderTopRightRadius: 8,
+    borderBottomRightRadius: 8,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: "rgba(212,175,106,0.45)",
+    shadowColor: "#000",
+    shadowOpacity: 0.6,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
   },
+  bookSpine: { position: "absolute", left: 0, top: 0, bottom: 0, width: 10, backgroundColor: "rgba(0,0,0,0.32)" },
+  bookGilt: { position: "absolute", left: 0, right: 0, top: 0, height: 1, backgroundColor: "rgba(212,175,106,0.8)" },
   cover: {
     width: "100%",
     height: "100%",
@@ -386,26 +428,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    borderRadius: radius.lg,
-    padding: 20,
+    borderRadius: 6,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "rgba(212,175,106,0.5)",
   },
   infoText: {
     flex: 1,
     gap: 5,
   },
-  title: { color: colors.text, fontSize: 18, fontFamily: fonts.displayBold },
+  title: { color: colors.text, fontSize: 22, fontFamily: fonts.grimoireBold },
   subtitle: { color: colors.textMuted, fontSize: 13 },
   readButton: {
-    borderRadius: radius.lg,
+    borderRadius: 999,
     paddingHorizontal: 22,
-    paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: "rgba(212,175,106,0.12)",
   },
   readButtonPressed: {
     opacity: 0.85,
   },
-  readButtonText: {
-    color: colors.background,
-    fontSize: 14,
-    fontWeight: "700",
-  },
+  readButtonText: { color: colors.accent, fontSize: 18, fontFamily: fonts.grimoire, letterSpacing: 0.6 },
 });

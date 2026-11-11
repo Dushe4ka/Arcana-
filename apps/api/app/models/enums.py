@@ -22,6 +22,14 @@ class StoryGenre(str, enum.Enum):
     ADVENTURE = "ADVENTURE"
 
 
+class StoryFormat(str, enum.Enum):
+    """Which section of the app a story lives in: the library (novels) or the cinema hall
+    (short mini-series). The reading engine treats both the same."""
+
+    NOVEL = "NOVEL"
+    SERIES = "SERIES"
+
+
 class SceneNodeType(str, enum.Enum):
     DIALOGUE = "DIALOGUE"
     CHOICE = "CHOICE"

@@ -299,7 +299,7 @@ function ChoicePanel({
           <span>{option.text.ru}</span>
           {option.costCurrency && (
             <span className="text-xs font-semibold text-amber-300">
-              {option.costCurrency === "HARD" ? "💎" : "🪙"} {option.costAmount}
+              {option.costCurrency === "HARD" ? "✦" : "❖"} {option.costAmount}
             </span>
           )}
         </button>

@@ -25,6 +25,7 @@ import { StageSprite } from "../../components/reader/StageSprite";
 import { useTypewriter } from "../../components/reader/useTypewriter";
 import { apiRequest, ApiError } from "../../lib/api";
 import { audioEngine } from "../../lib/audio";
+import { costLabel, CURRENCY } from "../../lib/currency";
 import { t } from "../../lib/locale";
 import { autoTapDelayMs, FAST_FORWARD, useReaderSettings } from "../../lib/reader-settings";
 import { colors, fonts, radius } from "../../lib/theme";
@@ -283,7 +284,7 @@ export default function ReadingScreen() {
   const confirmAndChoose = (option: ChoiceOptionView) => {
     const paid = Boolean(option.costCurrency) && option.costAmount > 0 && !option.owned;
     if (!paid) return void choose(option);
-    const currency = option.costCurrency === "HARD" ? "кристаллов" : "монет";
+    const currency = CURRENCY[option.costCurrency ?? "SOFT"].genitive;
     Alert.alert(
       "Платный выбор",
       `«${t(option.text)}»\n\nБудет списано ${option.costAmount} ${currency}. Этот вариант останется вашим: при повторном прохождении платить снова не придётся.`,
@@ -654,7 +655,7 @@ function ChoicePanel({
               <Text style={[styles.choiceOptionCost, option.owned && styles.choiceOwned]}>
                 {option.owned
                   ? "открыто"
-                  : `${option.costCurrency === "HARD" ? "💎" : "🪙"} ${option.costAmount}${locked ? " · не хватает" : ""}`}
+                  : `${costLabel(option.costCurrency ?? "SOFT", option.costAmount)}${locked ? " · не хватает" : ""}`}
               </Text>
             ) : null}
           </Pressable>
@@ -683,7 +684,7 @@ function EndPanel({
     Animated.timing(appear, { toValue: 1, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [appear]);
   const { rewards, nextChapter } = view;
-  const earned = [rewards.xp > 0 ? `+${rewards.xp} опыта` : null, rewards.soft > 0 ? `+${rewards.soft} монет` : null]
+  const earned = [rewards.xp > 0 ? `+${rewards.xp} опыта` : null, rewards.soft > 0 ? `+${rewards.soft} зёрен` : null]
     .filter(Boolean)
     .join("  ·  ");
 
@@ -701,7 +702,7 @@ function EndPanel({
               title={
                 nextChapter.unlocked
                   ? `Следующая глава: ${t(nextChapter.title)}`
-                  : `Открыть следующую главу · ${nextChapter.unlockCost} энергии`
+                  : `Открыть следующую главу · ${nextChapter.unlockCost} ключей`
               }
               onPress={() => onNext(nextChapter.id)}
               disabled={busy}

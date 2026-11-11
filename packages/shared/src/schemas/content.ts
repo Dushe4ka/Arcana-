@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CONTENT_STATUSES, STORY_GENRES, VARIABLE_TYPES } from "../enums";
+import { CONTENT_STATUSES, STORY_FORMATS, STORY_GENRES, VARIABLE_TYPES } from "../enums";
 import { conditionGroupSchema, effectListSchema, localizedTextSchema } from "./common";
 
 const slugSchema = z
@@ -14,6 +14,7 @@ export const storyCreateSchema = z.object({
   description: localizedTextSchema.optional(),
   coverImageUrl: z.string().url().nullable().optional(),
   genre: z.enum(STORY_GENRES),
+  format: z.enum(STORY_FORMATS).default("NOVEL"),
 });
 export type StoryCreateInput = z.infer<typeof storyCreateSchema>;
 

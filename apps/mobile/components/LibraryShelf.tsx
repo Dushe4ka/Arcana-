@@ -1,16 +1,19 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { LinearGradient } from "expo-linear-gradient";
 
-import { ShelfBookCard } from "./ShelfBookCard";
-import { colors, fonts } from "../lib/theme";
+import { ShelfBookCard, BOOK_HEIGHT, BOOK_WIDTH } from "./ShelfBookCard";
+import { SoftGlow } from "./SoftGlow";
+import { colors, fonts, wood } from "../lib/theme";
 import { t } from "../lib/locale";
 import type { StorySummary } from "../lib/types";
 
-/** One genre's row of covers - cards float directly on the ambient home
- * background (no wood-shelf illustration), each with its own glass-style
- * border, matching the "Показать все" section header pattern from the grid
- * reference. */
+const PLANK = 16;
+const NICHE_TOP = 18;
+
+/** One shelf of the bookcase: a brass plaque naming it, a shadowed wooden niche with the
+ * books standing in it, and a thick plank they stand on. Titles are engraved under the plank,
+ * so the books themselves stay clean. */
 export function LibraryShelf({
   label,
   category,
@@ -29,69 +32,91 @@ export function LibraryShelf({
 }) {
   if (stories.length === 0) return null;
 
-  // Only the single most recently published story on this shelf gets the
-  // "Новинка" badge, matching the reference (a spotlight on the newest
-  // addition, not a broad recency window every seeded story would trip).
+  // Only the single most recently published story on this shelf gets the "Новинка" ribbon.
   const newestId = showBadge
-    ? stories.reduce((newest, story) => (new Date(story.createdAt) > new Date(newest.createdAt) ? story : newest))
-        .id
+    ? stories.reduce((newest, story) => (new Date(story.createdAt) > new Date(newest.createdAt) ? story : newest)).id
     : null;
 
   return (
-    <View style={styles.section}>
-      <View style={styles.headingRow}>
-        <Text style={styles.label}>{label}</Text>
-        <Pressable hitSlop={6} onPress={() => router.push(`/(app)/library/${category}`)}>
-          <View style={styles.showAll}>
-            <Text style={styles.showAllText}>Показать все</Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-          </View>
+    <View style={styles.bay}>
+      <View style={styles.plaqueRow}>
+        <View style={styles.plaque}>
+          <Text style={styles.plaqueText} numberOfLines={1}>
+            {label}
+          </Text>
+        </View>
+        <Pressable
+          hitSlop={12}
+          onPress={() => router.push(`/(app)/library/${category}`)}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: показать все`}
+          style={styles.showAll}
+        >
+          <Text style={styles.showAllText}>все ›</Text>
         </Pressable>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-        {stories.map((story) => (
-          <ShelfBookCard
-            key={story.id}
-            storyId={story.id}
-            title={t(story.title)}
-            coverImageUrl={story.coverImageUrl}
-            isNew={story.id === newestId}
-            onPress={() => onPressStory(story)}
-          />
-        ))}
-      </ScrollView>
+      <View style={styles.niche}>
+        {/* Back wall of the niche: darker at the top where the shelf above shades it. */}
+        <LinearGradient colors={[wood.shadow, wood.dark, wood.mid]} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={["rgba(0,0,0,0.55)", "transparent"]} style={styles.nicheShade} pointerEvents="none" />
+        {/* A warm pool of candlelight on the back wall. */}
+        <SoftGlow size={BOOK_HEIGHT * 1.5} strength={0.03} style={styles.glow} />
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+          {stories.map((story, index) => (
+            <ShelfBookCard
+              key={story.id}
+              storyId={story.id}
+              title={t(story.title)}
+              coverImageUrl={story.coverImageUrl}
+              isNew={story.id === newestId}
+              index={index}
+              titleOffset={PLANK + 8}
+              onPress={() => onPressStory(story)}
+            />
+          ))}
+        </ScrollView>
+
+        {/* The plank sits across the whole niche, under the books' feet; it does not scroll. */}
+        <View style={styles.plankWrap} pointerEvents="none">
+          <View style={styles.plankHighlight} />
+          <LinearGradient colors={[wood.edge, wood.light, wood.mid, wood.dark]} locations={[0, 0.2, 0.7, 1]} style={styles.plank} />
+          <LinearGradient colors={["rgba(0,0,0,0.5)", "transparent"]} style={styles.plankShadow} />
+        </View>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  section: {
-    gap: 16,
+  bay: { gap: 0 },
+  plaqueRow: { alignItems: "center", justifyContent: "center", marginBottom: -11, zIndex: 2 },
+  plaque: {
+    maxWidth: "70%",
+    paddingHorizontal: 18,
+    paddingVertical: 4,
+    borderRadius: 3,
+    backgroundColor: "#1d140d",
+    borderWidth: 1,
+    borderColor: wood.brass,
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  headingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-  },
-  label: {
-    color: colors.text,
-    fontSize: 18,
-    fontFamily: fonts.displaySemiBold,
-  },
-  showAll: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-  },
-  showAllText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  row: {
-    paddingHorizontal: 20,
-    gap: 16,
-  },
+  plaqueText: { color: wood.brass, fontSize: 16, fontFamily: fonts.grimoire, letterSpacing: 1.2 },
+  showAll: { position: "absolute", right: 14, top: -2, minHeight: 28, justifyContent: "center" },
+  showAllText: { color: colors.textMuted, fontSize: 13, fontFamily: fonts.grimoireItalic },
+  niche: { overflow: "hidden", paddingTop: NICHE_TOP, paddingBottom: 14 },
+  nicheShade: { position: "absolute", top: 0, left: 0, right: 0, height: 34 },
+  glow: { position: "absolute", alignSelf: "center", top: NICHE_TOP - 20 },
+  row: { paddingHorizontal: 18, gap: 14, alignItems: "flex-start" },
+  plankWrap: { position: "absolute", left: 0, right: 0, top: NICHE_TOP + BOOK_HEIGHT },
+  plankHighlight: { height: 1, backgroundColor: "rgba(233,217,184,0.45)" },
+  plank: { height: PLANK },
+  plankShadow: { height: 10 },
 });
+
+export const SHELF_BOOK_WIDTH = BOOK_WIDTH;

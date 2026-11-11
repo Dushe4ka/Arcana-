@@ -11,19 +11,19 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import Ionicons from "@expo/vector-icons/Ionicons";
 import { STORY_GENRES, type StoryGenre } from "@arcana/shared";
 
+import { Bookcase } from "../../../components/Bookcase";
+import { CinemaSky } from "../../../components/CinemaSky";
 import { ContinueSection } from "../../../components/ContinueSection";
 import { GenreTabs } from "../../../components/GenreTabs";
-import { GlassSurface } from "../../../components/GlassSurface";
 import { HomeBackground } from "../../../components/HomeBackground";
 import { HomeHeader } from "../../../components/HomeHeader";
 import { LibraryShelf } from "../../../components/LibraryShelf";
 import { apiRequest, ApiError } from "../../../lib/api";
 import { useAuthStore } from "../../../lib/auth-store";
 import { useFavoritesStore } from "../../../lib/favorites-store";
-import { colors, fonts, homeGradient, radius } from "../../../lib/theme";
+import { colors, fonts, homeGradient } from "../../../lib/theme";
 import { useWalletStore } from "../../../lib/wallet-store";
 import type { SaveSlotListItem, StorySummary } from "../../../lib/types";
 
@@ -62,7 +62,8 @@ export default function CatalogScreen() {
     setError(null);
     try {
       const [storiesData, slotsData] = await Promise.all([
-        apiRequest<StorySummary[]>("/catalog/stories", { auth: false }),
+        // Sent with the session so team accounts also see technical test stories.
+        apiRequest<StorySummary[]>("/catalog/stories"),
         apiRequest<SaveSlotListItem[]>("/play/save-slots"),
       ]);
       setStories(storiesData);
@@ -84,6 +85,10 @@ export default function CatalogScreen() {
     setRefreshing(false);
   };
 
+  // The library holds novels; mini-series live in the cinema hall.
+  const novels = useMemo(() => stories.filter((story) => story.format !== "SERIES"), [stories]);
+  const series = useMemo(() => stories.filter((story) => story.format === "SERIES"), [stories]);
+
   const byGenre = useMemo(() => {
     const groups: Record<StoryGenre, StorySummary[]> = {
       FANTASY: [],
@@ -92,9 +97,9 @@ export default function CatalogScreen() {
       MYSTERY: [],
       ADVENTURE: [],
     };
-    for (const story of stories) groups[story.genre].push(story);
+    for (const story of novels) groups[story.genre].push(story);
     return groups;
-  }, [stories]);
+  }, [novels]);
 
   const slotByStoryId = useMemo(() => {
     const map: Partial<Record<string, SaveSlotListItem>> = {};
@@ -170,21 +175,30 @@ export default function CatalogScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <ContinueSection stories={stories} slotByStoryId={slotByStoryId} onOpen={openCarouselStory} />
+        <ContinueSection stories={novels} slotByStoryId={slotByStoryId} onOpen={openCarouselStory} />
 
-        <View style={styles.libraryHeading}>
-          <View style={styles.sectionTabs}>
-            <Pressable onPress={() => setActiveSection("library")} hitSlop={6}>
-              <Text style={[styles.sectionTab, activeSection !== "library" && styles.sectionTabInactive]}>
-                Библиотека
-              </Text>
-            </Pressable>
-            <Pressable onPress={() => setActiveSection("cinema")} hitSlop={6}>
-              <Text style={[styles.sectionTab, activeSection !== "cinema" && styles.sectionTabInactive]}>
-                Кинозал
-              </Text>
-            </Pressable>
-          </View>
+        <View style={styles.sectionTabs} accessibilityRole="tablist">
+          <View style={styles.sectionRule} />
+          {(
+            [
+              ["library", "Библиотека"],
+              ["cinema", "Кинозал"],
+            ] as const
+          ).map(([id, label], i) => (
+            <View key={id} style={styles.sectionTabWrap}>
+              {i > 0 ? <Text style={styles.sectionDiamond}>◆</Text> : null}
+              <Pressable
+                onPress={() => setActiveSection(id)}
+                hitSlop={10}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: activeSection === id }}
+              >
+                <Text style={[styles.sectionTab, activeSection !== id && styles.sectionTabInactive]}>{label}</Text>
+                <View style={[styles.sectionUnderline, activeSection === id && styles.sectionUnderlineOn]} />
+              </Pressable>
+            </View>
+          ))}
+          <View style={styles.sectionRule} />
         </View>
 
         {activeSection === "library" ? (
@@ -192,47 +206,36 @@ export default function CatalogScreen() {
             <GenreTabs active={activeGenre} onSelect={onSelectGenre} />
 
             <View
-              style={styles.shelves}
               onLayout={(e) => {
-                shelvesTop.current = e.nativeEvent.layout.y;
+                shelvesTop.current = e.nativeEvent.layout.y + 56;
               }}
             >
-              <LibraryShelf
-                label="Продолжить чтение"
-                category="continue"
-                stories={continueStories}
-                onPressStory={openStory}
-                showBadge={false}
-              />
-              <LibraryShelf
-                label="Избранное"
-                category="favorites"
-                stories={favoriteStories}
-                onPressStory={openStory}
-                showBadge={false}
-              />
-
-              {STORY_GENRES.map((genre) => (
-                <View key={genre} onLayout={onShelfLayout(genre)}>
-                  <LibraryShelf
-                    label={GENRE_LABELS[genre]}
-                    category={genre}
-                    stories={byGenre[genre]}
-                    onPressStory={openStory}
-                  />
-                </View>
-              ))}
+              <Bookcase>
+                <LibraryShelf
+                  label="Продолжить чтение"
+                  category="continue"
+                  stories={continueStories.filter((story) => story.format !== "SERIES")}
+                  onPressStory={openStory}
+                  showBadge={false}
+                />
+                <LibraryShelf
+                  label="Избранное"
+                  category="favorites"
+                  stories={favoriteStories}
+                  onPressStory={openStory}
+                  showBadge={false}
+                />
+                {STORY_GENRES.filter((genre) => byGenre[genre].length > 0).map((genre) => (
+                  <View key={genre} onLayout={onShelfLayout(genre)}>
+                    <LibraryShelf label={GENRE_LABELS[genre]} category={genre} stories={byGenre[genre]} onPressStory={openStory} />
+                  </View>
+                ))}
+                {novels.length === 0 && !error ? <Text style={styles.empty}>Полки ждут первых историй</Text> : null}
+              </Bookcase>
             </View>
-
-            {stories.length === 0 && !error ? (
-              <Text style={styles.empty}>Пока нет опубликованных историй</Text>
-            ) : null}
           </>
         ) : (
-          <GlassSurface style={styles.cinemaComingSoon} intensity={25}>
-            <Ionicons name="film-outline" size={22} color={colors.accentMuted} />
-            <Text style={styles.cinemaComingSoonText}>Скоро здесь появятся мини-сериалы</Text>
-          </GlassSurface>
+          <CinemaSky stories={series} onPressStory={openStory} />
         )}
       </ScrollView>
     </View>
@@ -244,24 +247,13 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
   content: { paddingTop: 68, paddingBottom: 56, gap: 40 },
   error: { color: colors.danger, paddingHorizontal: 20 },
-  libraryHeading: {
-    paddingHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  sectionTabs: { flexDirection: "row", alignItems: "center", gap: 18 },
-  sectionTab: { color: colors.text, fontSize: 22, fontFamily: fonts.displayBold, letterSpacing: 0.2 },
-  sectionTabInactive: { color: colors.textMuted, opacity: 0.85 },
-  shelves: { gap: 32 },
-  empty: { color: colors.textMuted, textAlign: "center", marginTop: 20 },
-  cinemaComingSoon: {
-    marginHorizontal: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    borderRadius: radius.lg,
-    padding: 18,
-  },
-  cinemaComingSoonText: { color: colors.textMuted, fontSize: 13, flex: 1 },
+  sectionTabs: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20 },
+  sectionRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.accentMuted },
+  sectionTabWrap: { flexDirection: "row", alignItems: "center", gap: 12 },
+  sectionDiamond: { color: colors.accent, fontSize: 7 },
+  sectionTab: { color: colors.text, fontSize: 25, fontFamily: fonts.grimoireBold, letterSpacing: 0.8 },
+  sectionTabInactive: { color: colors.textMuted },
+  sectionUnderline: { height: 1, marginTop: 3, backgroundColor: "transparent" },
+  sectionUnderlineOn: { backgroundColor: colors.accent },
+  empty: { color: colors.textMuted, textAlign: "center", paddingVertical: 28, fontFamily: fonts.grimoireItalic, fontSize: 16 },
 });

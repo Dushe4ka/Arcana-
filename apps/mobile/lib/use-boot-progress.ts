@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated } from "react-native";
 import { Asset } from "expo-asset";
+import {
+  CormorantGaramond_500Medium_Italic,
+  CormorantGaramond_600SemiBold,
+  CormorantGaramond_700Bold,
+} from "@expo-google-fonts/cormorant-garamond";
 import { PlayfairDisplay_600SemiBold, PlayfairDisplay_700Bold, useFonts } from "@expo-google-fonts/playfair-display";
 
 import heroImage from "../assets/images/login-hero.jpg";
@@ -20,7 +25,13 @@ export function useBootProgress(): { progress: Animated.Value; ready: boolean } 
   const progress = useRef(new Animated.Value(0)).current;
   const [bootDone, setBootDone] = useState(false);
   const hydrate = useAuthStore((s) => s.hydrate);
-  const [fontsLoaded] = useFonts({ PlayfairDisplay_600SemiBold, PlayfairDisplay_700Bold });
+  const [fontsLoaded] = useFonts({
+    PlayfairDisplay_600SemiBold,
+    PlayfairDisplay_700Bold,
+    CormorantGaramond_600SemiBold,
+    CormorantGaramond_700Bold,
+    CormorantGaramond_500Medium_Italic,
+  });
 
   useEffect(() => {
     let cancelled = false;

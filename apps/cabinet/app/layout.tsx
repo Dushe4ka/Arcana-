@@ -10,7 +10,7 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
   title: "Личный кабинет — Arcana",
-  description: "Баланс, статистика и покупка кристаллов Arcana",
+  description: "Баланс, статистика и покупка карт Arcana",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

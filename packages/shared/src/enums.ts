@@ -19,6 +19,10 @@ export const STORY_GENRES = [
 ] as const;
 export type StoryGenre = (typeof STORY_GENRES)[number];
 
+/** Which section of the app a story lives in: the library or the cinema hall. */
+export const STORY_FORMATS = ["NOVEL", "SERIES"] as const;
+export type StoryFormat = (typeof STORY_FORMATS)[number];
+
 export const VARIABLE_TYPES = ["NUMBER", "BOOLEAN", "STRING"] as const;
 export type VariableType = (typeof VARIABLE_TYPES)[number];
 

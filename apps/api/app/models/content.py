@@ -11,6 +11,7 @@ from app.models.enums import (
     ContentStatus,
     CurrencyCode,
     SceneNodeType,
+    StoryFormat,
     StoryGenre,
     VariableType,
 )
@@ -27,6 +28,7 @@ class Story(Base, UUIDPKMixin, TimestampMixin):
     status: Mapped[ContentStatus] = mapped_column(default=ContentStatus.DRAFT)
     # Single primary genre - drives which library shelf a story appears on in the app.
     genre: Mapped[StoryGenre] = mapped_column(default=StoryGenre.ROMANCE)
+    format: Mapped[StoryFormat] = mapped_column(default=StoryFormat.NOVEL, server_default="NOVEL")
     # Technical/QA stories (e.g. "ARCANA ENGINE TEST"): never listed for players, even when
     # published - only staff accounts see and can play them.
     is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+import * as SecureStore from "./secure-storage";
 import { create } from "zustand";
 
 /** Reading preferences. Stored on the device (they describe this phone and these eyes,

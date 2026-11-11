@@ -15,6 +15,8 @@ export type StoryOut = {
   coverImageUrl: string | null;
   status: ContentStatus;
   genre: StoryGenre;
+  /** NOVEL = library, SERIES = cinema hall. */
+  format: "NOVEL" | "SERIES";
   /** Technical/QA story - never listed for players, only staff can open it in the app. */
   isTest: boolean;
   createdAt: string;

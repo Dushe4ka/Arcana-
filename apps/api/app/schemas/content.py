@@ -22,6 +22,7 @@ class StoryCreateInput(CamelModel):
     description: LocalizedText | None = None
     cover_image_url: str | None = None
     genre: STORY_GENRES
+    format: Literal["NOVEL", "SERIES"] = "NOVEL"
     is_test: bool = False
 
     @field_validator("slug")
@@ -38,6 +39,7 @@ class StoryUpdateInput(CamelModel):
     description: LocalizedText | None = None
     cover_image_url: str | None = None
     genre: STORY_GENRES | None = None
+    format: Literal["NOVEL", "SERIES"] | None = None
     is_test: bool | None = None
     status: Literal["DRAFT", "PUBLISHED", "ARCHIVED"] | None = None
 

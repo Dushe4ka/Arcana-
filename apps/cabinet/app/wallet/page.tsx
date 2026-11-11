@@ -171,7 +171,7 @@ function WalletReturn() {
       {status === "done" && (
         <>
           <p className="font-[family-name:var(--font-display)] text-xl font-bold text-text">
-            Готово! Кристаллы зачислены.
+            Готово! Карты зачислены.
           </p>
           {hard !== null && (
             <p className="flex items-baseline gap-2">
@@ -190,7 +190,7 @@ function WalletReturn() {
       {status === "failed" && (
         <>
           <p className="max-w-xs text-[15px] leading-relaxed text-text">
-            Платёж не прошёл. Попробуйте купить кристаллы ещё раз.
+            Платёж не прошёл. Попробуйте купить карты ещё раз.
           </p>
           <PillLink href="/shop">В магазин</PillLink>
         </>
