@@ -6,19 +6,20 @@ export type TarotCard = {
   id: string;
   name: string;
   image: ImageSourcePropType;
-  /** height / width of the artwork, so a card is never stretched or cropped. */
-  aspect: number;
 };
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 export const CARD_BACK: ImageSourcePropType = require("../assets/tarot/back.jpg");
-export const CARD_BACK_ASPECT = 1137 / 640;
+/** Every card on the table has the same frame: the proportion of the card back (9:16).
+ * Artwork drawn in another proportion is fitted into it, so card art should be exported
+ * at 9:16 like the back. */
+export const CARD_ASPECT = 1137 / 640;
 
 export const TAROT_DECK: TarotCard[] = [
-  { id: "emperor", name: "Император", image: require("../assets/tarot/emperor.jpg"), aspect: 1136 / 640 },
-  { id: "lovers", name: "Влюблённые", image: require("../assets/tarot/lovers.jpg"), aspect: 1136 / 640 },
-  { id: "hermit", name: "Отшельник", image: require("../assets/tarot/hermit.jpg"), aspect: 1135 / 640 },
-  { id: "wheel", name: "Колесо Фортуны", image: require("../assets/tarot/wheel.jpg"), aspect: 960 / 640 },
+  { id: "emperor", name: "Император", image: require("../assets/tarot/emperor.jpg") },
+  { id: "lovers", name: "Влюблённые", image: require("../assets/tarot/lovers.jpg") },
+  { id: "hermit", name: "Отшельник", image: require("../assets/tarot/hermit.jpg") },
+  { id: "wheel", name: "Колесо Фортуны", image: require("../assets/tarot/wheel.jpg") },
 ];
 /* eslint-enable @typescript-eslint/no-require-imports */
 

@@ -10,10 +10,9 @@ export const BOOK_HEIGHT = 148;
 // Books on a real shelf are not all the same height.
 const HEIGHT_STEPS = [1, 0.94, 0.98, 0.9, 0.96];
 
-/** A book: cover with a shadowed spine on the left and a sliver of page edge on the right.
- * On the bookcase (`onShelf`) books stand at slightly different heights with the title on
- * a label across the foot of the cover; in a grid (the "show all" screen) the title sits
- * underneath. */
+/** A book standing on the shelf: cover with a shadowed spine on the left, a sliver of
+ * page edge on the right, and its title on a small label below the plank. In a grid
+ * (the "show all" screen) it has no plank under it, so `titleOffset` is 0. */
 export function ShelfBookCard({
   storyId,
   title,
@@ -21,7 +20,7 @@ export function ShelfBookCard({
   isNew = false,
   width = BOOK_WIDTH,
   index = 0,
-  onShelf = false,
+  titleOffset = 0,
   onPress,
 }: {
   storyId: string;
@@ -30,13 +29,14 @@ export function ShelfBookCard({
   isNew?: boolean;
   width?: number;
   index?: number;
-  onShelf?: boolean;
+  /** Space left for the shelf plank between the book's feet and its title. */
+  titleOffset?: number;
   onPress: () => void;
 }) {
   const isFavorite = useFavoritesStore((s) => s.ids.includes(storyId));
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
   const slot = (BOOK_HEIGHT * width) / BOOK_WIDTH;
-  const height = Math.round(slot * (onShelf ? HEIGHT_STEPS[index % HEIGHT_STEPS.length] : 1));
+  const height = Math.round(slot * (titleOffset ? HEIGHT_STEPS[index % HEIGHT_STEPS.length] : 1));
 
   return (
     <Pressable
@@ -70,30 +70,20 @@ export function ShelfBookCard({
             </View>
           ) : null}
 
-          {onShelf ? (
-            <LinearGradient colors={["transparent", "rgba(12,8,5,0.92)"]} style={styles.label} pointerEvents="none">
-              <Text style={styles.labelText} numberOfLines={2}>
-                {title}
-              </Text>
-            </LinearGradient>
-          ) : null}
-
           <Pressable
             hitSlop={10}
-            style={({ pressed: favPressed }) => [styles.favorite, onShelf && styles.favoriteSmall, favPressed && styles.pressed]}
+            style={({ pressed: favPressed }) => [styles.favorite, favPressed && styles.pressed]}
             onPress={() => toggleFavorite(storyId)}
             accessibilityRole="button"
             accessibilityLabel={isFavorite ? "Убрать из избранного" : "В избранное"}
           >
-            <Ionicons name={isFavorite ? "star" : "star-outline"} size={onShelf ? 10 : 13} color={isFavorite ? colors.accent : colors.text} />
+            <Ionicons name={isFavorite ? "star" : "star-outline"} size={13} color={isFavorite ? colors.accent : colors.text} />
           </Pressable>
         </View>
       </View>
-      {onShelf ? null : (
-        <Text style={styles.title} numberOfLines={2}>
-          {title}
-        </Text>
-      )}
+      <Text style={[styles.title, { marginTop: titleOffset || 8 }]} numberOfLines={2}>
+        {title}
+      </Text>
     </Pressable>
   );
 }
@@ -121,15 +111,15 @@ const styles = StyleSheet.create({
   ribbon: {
     position: "absolute",
     top: 0,
-    left: 12,
-    paddingHorizontal: 4,
+    left: 14,
+    paddingHorizontal: 5,
     paddingTop: 3,
     paddingBottom: 6,
     backgroundColor: "#6e2a35",
     borderBottomLeftRadius: 2,
     borderBottomRightRadius: 2,
   },
-  ribbonText: { color: "#e9d9b8", fontSize: 7.5, letterSpacing: 0.4, fontFamily: fonts.grimoire },
+  ribbonText: { color: "#e9d9b8", fontSize: 8.5, letterSpacing: 0.4, fontFamily: fonts.grimoire },
   favorite: {
     position: "absolute",
     top: 5,
@@ -141,8 +131,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(20,16,13,0.55)",
   },
-  favoriteSmall: { width: 18, height: 18, borderRadius: 9, top: 4, right: 5 },
-  title: { marginTop: 8, color: colors.text, fontSize: 13.5, lineHeight: 15, fontFamily: fonts.grimoire, textAlign: "center" },
-  label: { position: "absolute", left: 0, right: 0, bottom: 0, paddingTop: 18, paddingBottom: 5, paddingHorizontal: 5 },
-  labelText: { color: "#f3ece0", fontSize: 11.5, lineHeight: 12.5, fontFamily: fonts.grimoire, textAlign: "center" },
+  title: { color: colors.text, fontSize: 13.5, lineHeight: 15, fontFamily: fonts.grimoire, textAlign: "center" },
 });

@@ -5,6 +5,7 @@
   "dependencies": {
     "@arcana/shared": "workspace:*",
     "@expo-google-fonts/cormorant-garamond": "^0.4.1",
+    "@expo-google-fonts/forum": "^0.4.1",
     "@expo-google-fonts/playfair-display": "^0.4.2",
     "@react-native-masked-view/masked-view": "0.3.2",
     "@react-three/fiber": "9.7.0",

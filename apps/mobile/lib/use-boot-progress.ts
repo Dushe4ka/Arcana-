@@ -6,6 +6,7 @@ import {
   CormorantGaramond_600SemiBold,
   CormorantGaramond_700Bold,
 } from "@expo-google-fonts/cormorant-garamond";
+import { Forum_400Regular } from "@expo-google-fonts/forum";
 import {
   PlayfairDisplay_600SemiBold,
   PlayfairDisplay_700Bold,
@@ -32,9 +33,10 @@ export function useBootProgress(): { progress: Animated.Value; ready: boolean } 
   const [fontsLoaded] = useFonts({
     PlayfairDisplay_600SemiBold,
     PlayfairDisplay_700Bold,
-      CormorantGaramond_600SemiBold,
+    CormorantGaramond_600SemiBold,
     CormorantGaramond_700Bold,
     CormorantGaramond_500Medium_Italic,
+    Forum_400Regular,
   });
 
   useEffect(() => {

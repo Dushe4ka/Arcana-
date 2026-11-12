@@ -4,7 +4,7 @@ import { router, Stack } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { TableBackdrop } from "../../components/TableBackdrop";
-import { CARD_BACK, CARD_BACK_ASPECT, drawPair, TAROT_DECK, type TarotCard } from "../../lib/tarot";
+import { CARD_ASPECT, CARD_BACK, drawPair, TAROT_DECK, type TarotCard } from "../../lib/tarot";
 import { colors, fonts } from "../../lib/theme";
 import { useReduceMotion } from "../../lib/use-reduce-motion";
 
@@ -41,7 +41,7 @@ function ShufflingCard({ index, width, active }: { index: number; width: number;
         styles.deckCard,
         {
           width,
-          height: width * CARD_BACK_ASPECT,
+          height: width * CARD_ASPECT,
           top: -index * 1.5,
           transform: [
             { translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [0, side * width * 0.72] }) },
@@ -99,7 +99,6 @@ function DealtCard({
     });
   };
 
-  const aspect = faceUp ? card.aspect : CARD_BACK_ASPECT;
   return (
     <Animated.View
       style={[
@@ -124,9 +123,12 @@ function DealtCard({
         accessibilityRole="button"
         accessibilityLabel={faceUp ? card.name : "Карта рубашкой вверх. Нажмите, чтобы открыть"}
       >
-        <Image source={faceUp ? card.image : CARD_BACK} style={[styles.cardImage, { width, height: width * aspect }]} />
+        <Image
+          source={faceUp ? card.image : CARD_BACK}
+          resizeMode="stretch"
+          style={[styles.cardImage, { width, height: width * CARD_ASPECT }]}
+        />
       </Pressable>
-      {faceUp ? <Text style={styles.cardName}>{card.name}</Text> : null}
     </Animated.View>
   );
 }
@@ -148,7 +150,7 @@ export default function TarotScreen() {
       { x: left + cardWidth + 18, y: top },
     ];
   }, [cardWidth, height, width]);
-  const deckOrigin = { x: (width - cardWidth) / 2, y: height - deckWidth * CARD_BACK_ASPECT - 40 };
+  const deckOrigin = { x: (width - cardWidth) / 2, y: height - deckWidth * CARD_ASPECT - 40 };
 
   const pull = () => {
     const [first, second] = drawPair(TAROT_DECK.length);
@@ -207,7 +209,7 @@ export default function TarotScreen() {
             disabled={Boolean(draw)}
             accessibilityRole="button"
             accessibilityLabel="Колода. Нажмите, чтобы вытянуть две карты"
-            style={[styles.deck, { width: deckWidth, height: deckWidth * CARD_BACK_ASPECT }]}
+            style={[styles.deck, { width: deckWidth, height: deckWidth * CARD_ASPECT }]}
           >
             {Array.from({ length: DECK_CARDS }, (_, index) => (
               <ShufflingCard key={index} index={index} width={deckWidth} active={!draw && !still} />
@@ -229,9 +231,10 @@ const styles = StyleSheet.create({
   caption: { alignItems: "center", gap: 4, paddingHorizontal: 24 },
   title: {
     color: colors.text,
-    fontSize: 32,
+    fontSize: 30,
     lineHeight: 36,
-    fontFamily: fonts.grimoireBold,
+    letterSpacing: 1,
+    fontFamily: fonts.oracle,
     textAlign: "center",
     textShadowColor: "rgba(0,0,0,0.9)",
     textShadowRadius: 12,
@@ -265,13 +268,4 @@ const styles = StyleSheet.create({
   },
   dealt: { position: "absolute", alignItems: "center" },
   cardImage: { borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(212,175,106,0.7)" },
-  cardName: {
-    marginTop: 8,
-    color: colors.text,
-    fontSize: 19,
-    fontFamily: fonts.grimoire,
-    textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.9)",
-    textShadowRadius: 8,
-  },
 });
