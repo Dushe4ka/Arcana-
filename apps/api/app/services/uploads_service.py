@@ -1,6 +1,9 @@
 """Validates and stores uploaded media (images, GIF sprites, audio)."""
 
+import asyncio
 import io
+import shutil
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -20,6 +23,10 @@ MAX_UPLOAD_BYTES = MAX_AUDIO_BYTES
 # Landscape backgrounds (shown cropped to the screen height) are left as they are.
 MAX_IMAGE_HEIGHT = 2400
 MAX_IMAGE_WIDTH = 4096
+# WAV is uncompressed: a three-minute track is 16 MB, most of a chapter's download. It is
+# re-encoded to AAC (.m4a), which iOS and Android both play, at a bitrate where the
+# difference is not audible on a phone - about a fifth of the size.
+AUDIO_BITRATE = "192k"
 
 
 def _sniff(head: bytes) -> str | None:
@@ -85,18 +92,25 @@ async def save_upload(file: UploadFile, focal_x: float | None = None, focal_y: f
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, f"Файл слишком большой (максимум {limit // MB} МБ для этого типа)"
         )
+    original = contents
+    if kind == "audio/wav":
+        encoded = await encode_wav_to_m4a(contents)
+        if encoded is not None:
+            contents, extension = encoded, ".m4a"
 
     uploads_dir = Path(settings.uploads_dir)
     uploads_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{uuid.uuid4().hex}{extension}"
+    stem = uuid.uuid4().hex
+    filename = f"{stem}{extension}"
     smaller = shrink_image(contents, kind)
     if smaller is not None:
-        # The full-size original is kept next to the served file, so nothing the author
+        contents = smaller
+    if contents is not original:
+        # The untouched upload is kept next to the served file, so nothing the author
         # uploaded is ever lost.
         originals = uploads_dir / "originals"
         originals.mkdir(exist_ok=True)
-        (originals / filename).write_bytes(contents)
-        contents = smaller
+        (originals / f"{stem}{_KINDS[kind][0]}").write_bytes(original)
     (uploads_dir / filename).write_bytes(contents)
 
     url = f"{settings.public_base_url}/uploads/{filename}"
@@ -129,3 +143,35 @@ def shrink_image(contents: bytes, kind: str) -> bytes | None:
     except (OSError, ValueError, Image.DecompressionBombError):
         # Unreadable by Pillow but it passed the magic-byte check: store it as uploaded.
         return None
+
+
+async def encode_wav_to_m4a(contents: bytes) -> bytes | None:
+    """WAV -> AAC in an .m4a container via ffmpeg. Returns None when ffmpeg is not installed
+    or cannot read the file, so the WAV is stored as uploaded instead of failing."""
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        source, target = Path(tmp) / "in.wav", Path(tmp) / "out.m4a"
+        source.write_bytes(contents)
+        process = await asyncio.create_subprocess_exec(
+            ffmpeg,
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-i",
+            str(source),
+            "-vn",
+            "-c:a",
+            "aac",
+            "-b:a",
+            AUDIO_BITRATE,
+            "-movflags",
+            "+faststart",
+            str(target),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        if await process.wait() != 0 or not target.exists():
+            return None
+        return target.read_bytes()

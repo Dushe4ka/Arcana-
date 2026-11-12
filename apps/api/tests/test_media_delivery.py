@@ -92,3 +92,64 @@ def test_view_lists_pictures_of_the_next_beats_down_every_branch():
     )
     view = build_view(graph, runtime.run_until_rest(graph, EngineState(), "a"), characters)
     assert view["preload"] == ["s/sad.png", "bg/ruins.jpg"]
+
+
+def _wav(seconds=1.0):
+    import math
+    import struct
+    import wave
+
+    out = io.BytesIO()
+    with wave.open(out, "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(44100)
+        frames = b"".join(
+            struct.pack("<hh", s, s)
+            for s in (
+                int(8000 * math.sin(2 * math.pi * 440 * i / 44100)) for i in range(int(44100 * seconds))
+            )
+        )
+        w.writeframes(frames)
+    return out.getvalue()
+
+
+async def test_wav_upload_is_served_as_m4a_and_the_wav_is_kept(
+    client, make_user, auth_headers, tmp_path, monkeypatch
+):
+    import shutil
+
+    import pytest
+
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg is not installed here")
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "uploads_dir", str(tmp_path))
+    writer = await make_user("writer-music@example.com", role="WRITER")
+    wav = _wav()
+    response = await client.post(
+        "/api/admin/uploads", headers=auth_headers(writer), files={"file": ("theme.wav", wav, "audio/wav")}
+    )
+    assert response.status_code == 201, response.text
+    name = response.json()["url"].rsplit("/", 1)[1]
+    assert name.endswith(".m4a")
+    served = (tmp_path / name).read_bytes()
+    assert served[4:8] == b"ftyp" and len(served) < len(wav) / 3
+    assert (tmp_path / "originals" / name.replace(".m4a", ".wav")).read_bytes() == wav
+
+
+async def test_wav_is_stored_as_is_without_ffmpeg(client, make_user, auth_headers, tmp_path, monkeypatch):
+    from app.config import settings
+    from app.services import uploads_service
+
+    monkeypatch.setattr(settings, "uploads_dir", str(tmp_path))
+    monkeypatch.setattr(uploads_service.shutil, "which", lambda _name: None)
+    writer = await make_user("writer-music2@example.com", role="WRITER")
+    response = await client.post(
+        "/api/admin/uploads",
+        headers=auth_headers(writer),
+        files={"file": ("theme.wav", _wav(0.2), "audio/wav")},
+    )
+    assert response.status_code == 201
+    assert response.json()["url"].endswith(".wav")

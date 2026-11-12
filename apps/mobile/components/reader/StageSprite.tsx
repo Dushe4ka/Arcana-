@@ -5,9 +5,8 @@ import type { StagedCharacterView } from "../../lib/types";
 
 const useNativeDriver = true;
 
-/** One character on stage. Motion is deliberately small - it should read as a living
- * person standing there, never pull the eye away from the text:
- *  - a slow "breathing" scale anchored at the feet while idle;
+/** One character on stage. Between beats the character stands perfectly still (an idle
+ * "breathing" scale was removed at the owner's request); motion happens only when asked:
  *  - a one-shot entrance/reaction animation when the beat asks for one;
  *  - a short crossfade whenever the sprite image itself changes (new emotion or outfit). */
 export function StageSprite({
@@ -19,7 +18,6 @@ export function StageSprite({
   reduceMotion: boolean;
   speaking: boolean;
 }) {
-  const breath = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const offsetX = useRef(new Animated.Value(0)).current;
   const offsetY = useRef(new Animated.Value(0)).current;
@@ -28,21 +26,6 @@ export function StageSprite({
   // sprite was still downloading, and the character then popped in late with no fade.
   const [loadedUri, setLoadedUri] = useState<string | null>(null);
   const ready = loadedUri === staged.spriteUrl;
-
-  useEffect(() => {
-    if (reduceMotion) {
-      breath.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(breath, { toValue: 1, duration: 2600, easing: Easing.inOut(Easing.sin), useNativeDriver }),
-        Animated.timing(breath, { toValue: 0, duration: 2600, easing: Easing.inOut(Easing.sin), useNativeDriver }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [breath, reduceMotion]);
 
   // Replays whenever the image (new emotion/outfit) or the requested animation changes:
   // the new sprite always fades in, plus the beat's one-shot move if it has one.
@@ -94,7 +77,6 @@ export function StageSprite({
 
   if (!staged.spriteUrl) return null;
 
-  const breathScale = breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.008] });
 
   return (
     <Animated.Image
@@ -114,7 +96,7 @@ export function StageSprite({
           transform: [
             { translateX: offsetX },
             { translateY: offsetY },
-            { scale: Animated.multiply(breathScale, lean) },
+            { scale: lean },
           ],
         },
       ]}
