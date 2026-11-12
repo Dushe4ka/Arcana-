@@ -57,6 +57,7 @@ export default function StoryDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startingChapterId, setStartingChapterId] = useState<string | null>(null);
+  const [restartingChapterId, setRestartingChapterId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -72,12 +73,13 @@ export default function StoryDetailScreen() {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  const startChapter = async (chapter: ChapterSummary) => {
-    setStartingChapterId(chapter.id);
+  const startChapter = async (chapter: ChapterSummary, restart = false) => {
+    const setBusy = restart ? setRestartingChapterId : setStartingChapterId;
+    setBusy(chapter.id);
     try {
       const view = await apiRequest<PlayView>(`/play/chapters/${chapter.id}/start`, {
         method: "POST",
-        body: JSON.stringify({ slotIndex: DEFAULT_SLOT_INDEX }),
+        body: JSON.stringify({ slotIndex: DEFAULT_SLOT_INDEX, restart }),
       });
       router.push(`/read/${view.saveSlot.id}`);
     } catch (err) {
@@ -86,9 +88,21 @@ export default function StoryDetailScreen() {
         err instanceof ApiError ? err.message : "Попробуйте позже",
       );
     } finally {
-      setStartingChapterId(null);
+      setBusy(null);
     }
   };
+
+  // ▶ resumes where the reader stopped; this starts the chapter over from its first line
+  // with the choices made inside it undone (paid options stay bought).
+  const confirmRestart = (chapter: ChapterSummary) =>
+    Alert.alert(
+      "Начать главу заново?",
+      "Прохождение этой главы начнётся с первой реплики, выборы в ней сбросятся. Купленные варианты останутся купленными.",
+      [
+        { text: "Отмена", style: "cancel" },
+        { text: "Начать заново", onPress: () => void startChapter(chapter, true) },
+      ],
+    );
 
   const BackButton = (
     <Pressable onPress={() => router.back()} hitSlop={8} style={[styles.backButton, { top: insets.top + 10 }]}>
@@ -158,8 +172,26 @@ export default function StoryDetailScreen() {
                       </Text>
                     </View>
                     <Pressable
+                      onPress={() => confirmRestart(chapter)}
+                      disabled={restartingChapterId === chapter.id}
+                      hitSlop={4}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Начать главу ${chapter.index} заново`}
+                      style={({ pressed }) => pressed && styles.playPressed}
+                    >
+                      <View style={styles.restartButton}>
+                        {restartingChapterId === chapter.id ? (
+                          <ActivityIndicator color={colors.accent} size="small" />
+                        ) : (
+                          <Ionicons name="refresh" size={18} color={colors.accent} />
+                        )}
+                      </View>
+                    </Pressable>
+                    <Pressable
                       onPress={() => startChapter(chapter)}
                       disabled={startingChapterId === chapter.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Читать главу ${chapter.index}`}
                       style={({ pressed }) => pressed && styles.playPressed}
                     >
                       <GlassSurface style={styles.playButton} intensity={60} tintColor="rgba(194,147,143,0.82)">
@@ -232,6 +264,16 @@ const styles = StyleSheet.create({
   chapterInfo: { flex: 1, gap: 4 },
   chapterTitle: { color: colors.text, fontSize: 15, fontWeight: "600" },
   chapterCost: { color: colors.textMuted, fontSize: 12 },
+  restartButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accentMuted,
+    backgroundColor: "rgba(36,28,22,0.45)",
+  },
   playButton: {
     width: 40,
     height: 40,
