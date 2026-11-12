@@ -71,20 +71,26 @@ def api(client, auth_headers):
 
         async def start(self, chapter, slot=1, expect=200, **body):
             r = await client.post(
-                f"/api/play/chapters/{chapter.id}/start", headers=self.headers, json={"slotIndex": slot, **body}
+                f"/api/play/chapters/{chapter.id}/start",
+                headers=self.headers,
+                json={"slotIndex": slot, **body},
             )
             assert r.status_code == expect, r.text
             return r.json()
 
         async def post(self, view, action, expect=200, **body):
             r = await client.post(
-                f"/api/play/save-slots/{view['saveSlot']['id']}/{action}", headers=self.headers, json=body or None
+                f"/api/play/save-slots/{view['saveSlot']['id']}/{action}",
+                headers=self.headers,
+                json=body or None,
             )
             assert r.status_code == expect, r.text
             return r.json()
 
         async def get(self, view, suffix="", expect=200):
-            r = await client.get(f"/api/play/save-slots/{view['saveSlot']['id']}{suffix}", headers=self.headers)
+            r = await client.get(
+                f"/api/play/save-slots/{view['saveSlot']['id']}{suffix}", headers=self.headers
+            )
             assert r.status_code == expect, r.text
             return r.json()
 
@@ -110,7 +116,9 @@ async def _branching_chapter(db_session, make_chapter):
     after = await b.say("После выбора")
     await b.link(after, gate)
     choice = await b.node("CHOICE", prompt={"ru": "Как ответить?"})
-    kind = await b.option(choice, "Тепло", after, effects=[{"variableKey": "trust", "op": "INCREMENT", "value": 2}])
+    kind = await b.option(
+        choice, "Тепло", after, effects=[{"variableKey": "trust", "op": "INCREMENT", "value": 2}]
+    )
     cold = await b.option(choice, "Холодно", after)
     intro = await b.say("Начало")
     await b.link(intro, choice)
@@ -118,7 +126,9 @@ async def _branching_chapter(db_session, make_chapter):
     return b, {"intro": intro, "choice": choice, "kind": kind, "cold": cold, "after": after}
 
 
-async def test_full_playthrough_branches_on_choice_and_rewards_exactly_once(api, make_user, make_chapter, db_session):
+async def test_full_playthrough_branches_on_choice_and_rewards_exactly_once(
+    api, make_user, make_chapter, db_session
+):
     b, n = await _branching_chapter(db_session, make_chapter)
     api.as_user(await make_user("flow@example.com"))
     before = await api.wallet()
@@ -221,7 +231,9 @@ async def _paid_chapter(db_session, make_chapter, *, cost=30, broken=False):
     scene = await b.say("Особая сцена")
     await b.link(scene, end)
     choice = await b.node("CHOICE")
-    paid = await b.option(choice, "Премиум", None if broken else scene, cost_currency="SOFT", cost_amount=cost)
+    paid = await b.option(
+        choice, "Премиум", None if broken else scene, cost_currency="SOFT", cost_amount=cost
+    )
     free = await b.option(choice, "Обычный", end)
     await b.entry(choice)
     return b, paid, free
@@ -229,13 +241,15 @@ async def _paid_chapter(db_session, make_chapter, *, cost=30, broken=False):
 
 async def _spend_count(db_session, user):
     return await db_session.scalar(
-        select(func.count()).select_from(CurrencyTransaction).where(
-            CurrencyTransaction.user_id == user.id, CurrencyTransaction.type == "SPEND"
-        )
+        select(func.count())
+        .select_from(CurrencyTransaction)
+        .where(CurrencyTransaction.user_id == user.id, CurrencyTransaction.type == "SPEND")
     )
 
 
-async def test_paid_choice_is_charged_once_even_after_rollback_and_replay(api, make_user, make_chapter, db_session):
+async def test_paid_choice_is_charged_once_even_after_rollback_and_replay(
+    api, make_user, make_chapter, db_session
+):
     b, paid, _ = await _paid_chapter(db_session, make_chapter)
     user = await make_user("paid@example.com")
     api.as_user(user)
@@ -271,7 +285,9 @@ async def test_paid_choice_with_broken_continuation_charges_nothing(api, make_us
     assert (await api.get(start))["nodeId"] == start["nodeId"]
 
 
-async def test_unaffordable_paid_choice_is_refused_and_story_stays_put(api, make_user, make_chapter, db_session):
+async def test_unaffordable_paid_choice_is_refused_and_story_stays_put(
+    api, make_user, make_chapter, db_session
+):
     b, paid, _ = await _paid_chapter(db_session, make_chapter, cost=10_000)
     user = await make_user("poor@example.com")
     api.as_user(user)
@@ -291,7 +307,9 @@ async def test_option_from_another_node_is_rejected(api, make_user, make_chapter
     await api.post(start, "choice", expect=400, choiceOptionId=str(n["kind"].id))
 
 
-async def test_variables_carry_into_next_chapter_and_replay_restores_them(api, make_user, make_chapter, make_story, db_session):
+async def test_variables_carry_into_next_chapter_and_replay_restores_them(
+    api, make_user, make_chapter, make_story, db_session
+):
     b, n = await _branching_chapter(db_session, make_chapter)
     story = await db_session.get(type(b.chapter.season).story.property.mapper.class_, b.story_id)
     second = await make_chapter(story=story, index=2)
@@ -333,7 +351,9 @@ async def test_effect_entry_node_is_applied_once_across_reloads(api, make_user, 
         thenNodeId=str(yes.id),
         elseNodeId=str(no.id),
     )
-    fx = await b.node("EFFECT", effects=[{"variableKey": "visits", "op": "INCREMENT", "value": 1}], nextNodeId=str(gate.id))
+    fx = await b.node(
+        "EFFECT", effects=[{"variableKey": "visits", "op": "INCREMENT", "value": 1}], nextNodeId=str(gate.id)
+    )
     await b.entry(fx)
     api.as_user(await make_user("fx@example.com"))
     view = await api.start(chapter)
@@ -438,7 +458,9 @@ async def test_auto_node_loop_is_reported_as_content_error(api, make_user, make_
     assert body["code"] == "AUTO_LOOP"
 
 
-async def test_catalog_lists_test_stories_only_for_staff(client, make_user, auth_headers, make_chapter, db_session):
+async def test_catalog_lists_test_stories_only_for_staff(
+    client, make_user, auth_headers, make_chapter, db_session
+):
     from app.models.content import Story
 
     chapter = await make_chapter()
@@ -454,7 +476,9 @@ async def test_catalog_lists_test_stories_only_for_staff(client, make_user, auth
     editor = await make_user("cat-editor@example.com", role="EDITOR")
     listed = (await client.get("/api/catalog/stories", headers=auth_headers(editor))).json()
     assert [s["id"] for s in listed] == [str(story.id)] and listed[0]["isTest"] is True
-    assert (await client.get(f"/api/catalog/stories/{story.id}", headers=auth_headers(editor))).status_code == 200
+    assert (
+        await client.get(f"/api/catalog/stories/{story.id}", headers=auth_headers(editor))
+    ).status_code == 200
 
 
 async def test_catalog_returns_seasons_and_chapters_in_reading_order(client, make_chapter, db_session):
@@ -479,3 +503,35 @@ async def test_catalog_returns_seasons_and_chapters_in_reading_order(client, mak
     detail = (await client.get(f"/api/catalog/stories/{story_id}")).json()
     assert [s["index"] for s in detail["seasons"]] == [1, 2]
     assert [c["index"] for c in detail["seasons"][1]["chapters"]] == [1, 2, 3]
+
+
+async def test_chapter_assets_list_the_live_versions_pictures_and_sounds(
+    api, client, make_user, make_chapter, make_character, db_session
+):
+    from app.models.content import Story
+
+    chapter = await make_chapter()
+    story = await db_session.get(Story, chapter.season.story_id)
+    liv = await make_character(story)
+    liv.sprites = {"sad": "s/sad.png", "toga_sad": "s/toga_sad.png", "smile": "s/smile.png"}
+    b = StoryBuilder(db_session, chapter)
+    first = await b.say(
+        "пепел",
+        backgroundImageUrl="bg/ruins.jpg",
+        music={"url": "m/theme.mp3", "action": "play"},
+        staged=[{"characterId": str(liv.id), "sprite": "sad", "position": "left"}],
+    )
+    second = await b.say("тишина", sfxUrl="fx/thunder.mp3", cgImageUrl="cg/fire.jpg")
+    await b.link(first, second)
+    await b.entry(first)
+    # A draft edit after publishing must not leak into what players download.
+    first.data = {**first.data, "backgroundImageUrl": "bg/draft.jpg"}
+    await db_session.flush()
+
+    player = await make_user("assets@example.com")
+    api.as_user(player)
+    r = await client.get(f"/api/play/chapters/{chapter.id}/assets", headers=api.headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert sorted(body["images"]) == ["bg/ruins.jpg", "cg/fire.jpg", "s/sad.png", "s/toga_sad.png"]
+    assert sorted(body["audio"]) == ["fx/thunder.mp3", "m/theme.mp3"]

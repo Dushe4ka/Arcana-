@@ -6,6 +6,8 @@
  * it, and an over-the-air JS update must not crash such a build - so the module is loaded
  * defensively and every call degrades to silence when it is missing. */
 
+import { audioSource } from "./media-cache";
+
 type Player = {
   volume: number;
   loop: boolean;
@@ -72,7 +74,8 @@ class AudioEngine {
     }
     if (!target) return;
     try {
-      const player = mod.createAudioPlayer({ uri: target.url });
+      // A track downloaded with the chapter plays from the device instead of streaming.
+      const player = mod.createAudioPlayer({ uri: audioSource(target.url) });
       player.loop = target.loop;
       player.volume = 0;
       this.music = { player, url: target.url, base: target.volume };
@@ -87,7 +90,7 @@ class AudioEngine {
     const mod = loadModule();
     if (!mod || this.paused || this.sfxVolume <= 0) return;
     try {
-      const player = mod.createAudioPlayer({ uri: url });
+      const player = mod.createAudioPlayer({ uri: audioSource(url) });
       player.volume = this.sfxVolume;
       player.play();
       // One-shots are short; release the native player once it has certainly finished.

@@ -90,6 +90,16 @@ async def get_history(
     return await play_service.get_history(db, user.user_id, save_slot_id)
 
 
+@router.get("/chapters/{chapter_id}/assets")
+async def chapter_assets(
+    chapter_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pictures and sounds of the chapter's live version, for downloading before reading."""
+    return await play_service.chapter_assets(db, chapter_id, role=user.role)
+
+
 @router.post("/chapters/{chapter_id}/start")
 async def start_chapter(
     chapter_id: str,

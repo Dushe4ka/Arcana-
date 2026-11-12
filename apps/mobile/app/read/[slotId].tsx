@@ -31,6 +31,7 @@ import { useTypewriter } from "../../components/reader/useTypewriter";
 import { apiRequest, ApiError } from "../../lib/api";
 import { audioEngine } from "../../lib/audio";
 import { costLabel, CURRENCY } from "../../lib/currency";
+import { isChapterPrepared, preloadChapter } from "../../lib/media-cache";
 import { t } from "../../lib/locale";
 import { autoTapDelayMs, FAST_FORWARD, useReaderSettings } from "../../lib/reader-settings";
 import { colors, fonts, radius } from "../../lib/theme";
@@ -177,14 +178,43 @@ export default function ReadingScreen() {
     [cameraPan, cameraZoom, dip, flash, pulse, shake],
   );
 
+  // Before the first line of a chapter everything it shows and plays is downloaded, so
+  // characters appear on their own line and music starts with the scene.
+  const [preparing, setPreparing] = useState<{ done: number; total: number; canSkip: boolean } | null>(null);
+  const skipPreparing = useRef<(() => void) | null>(null);
+  const prepare = useCallback(async (chapterId: string | null) => {
+    if (!chapterId || isChapterPrepared(chapterId)) return;
+    setPreparing({ done: 0, total: 0, canSkip: false });
+    const allowSkip = setTimeout(() => setPreparing((p) => (p ? { ...p, canSkip: true } : p)), 5000);
+    const skipped = new Promise<void>((resolve) => {
+      skipPreparing.current = resolve;
+      // A dead connection must not hold the story hostage: read on after a minute anyway.
+      setTimeout(resolve, 60000);
+    });
+    try {
+      await Promise.race([
+        preloadChapter(chapterId, (done, total) => setPreparing((p) => (p ? { ...p, done, total } : p))),
+        skipped,
+      ]);
+    } catch {
+      // Could not even get the list: the chapter still plays, loading each file on demand.
+    } finally {
+      clearTimeout(allowSkip);
+      skipPreparing.current = null;
+      setPreparing(null);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setError(null);
     try {
-      present(await apiRequest<PlayView>(`/play/save-slots/${slotId}`));
+      const first = await apiRequest<PlayView>(`/play/save-slots/${slotId}`);
+      await prepare(first.saveSlot.chapterId);
+      present(first);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось загрузить сцену");
     }
-  }, [slotId, present]);
+  }, [slotId, present, prepare]);
 
   useEffect(() => {
     hydrateSettings();
@@ -373,6 +403,27 @@ export default function ReadingScreen() {
     }
   };
 
+  if (preparing) {
+    const progress = preparing.total > 0 ? preparing.done / preparing.total : 0;
+    return (
+      <View style={styles.center}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Text style={styles.prepareTitle}>Готовим главу</Text>
+        <Text style={styles.prepareNote}>
+          {preparing.total > 0 ? `Загружено ${preparing.done} из ${preparing.total}` : "Собираем сцены…"}
+        </Text>
+        <View style={styles.prepareTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: preparing.total, now: preparing.done }}>
+          <View style={[styles.prepareFill, { width: `${Math.round(progress * 100)}%` }]} />
+        </View>
+        {preparing.canSkip ? (
+          <Pressable onPress={() => skipPreparing.current?.()} hitSlop={12} style={styles.prepareSkip} accessibilityRole="button">
+            <Text style={styles.prepareSkipText}>Начать сейчас</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -516,6 +567,7 @@ export default function ReadingScreen() {
                 body: JSON.stringify({ slotIndex: view.saveSlot.slotIndex }),
               });
               refreshWallet();
+              await prepare(next.saveSlot.chapterId);
               router.replace(`/read/${next.saveSlot.id}`);
               present(next);
             } catch (err) {
@@ -845,6 +897,21 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: { color: colors.danger, textAlign: "center", fontSize: 15, lineHeight: 22 },
+  prepareTitle: { color: colors.text, fontSize: 26, fontFamily: fonts.grimoireBold, textAlign: "center" },
+  prepareNote: { color: colors.textMuted, fontSize: 17, fontFamily: fonts.grimoireItalic, textAlign: "center" },
+  prepareTrack: {
+    alignSelf: "center",
+    width: "70%",
+    maxWidth: 320,
+    height: 3,
+    marginTop: 18,
+    borderRadius: 2,
+    overflow: "hidden",
+    backgroundColor: "rgba(212,175,106,0.18)",
+  },
+  prepareFill: { height: "100%", backgroundColor: colors.accent },
+  prepareSkip: { alignSelf: "center", marginTop: 22, minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
+  prepareSkipText: { color: colors.accent, fontSize: 17, fontFamily: fonts.grimoire, textDecorationLine: "underline" },
   world: { ...StyleSheet.absoluteFillObject },
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,8,18,0.25)" },
   stage: { ...StyleSheet.absoluteFillObject, bottom: 20 },

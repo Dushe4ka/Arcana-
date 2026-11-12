@@ -125,6 +125,38 @@ async def start_chapter(
     return await _view(db, user_id, slot, graph, rest, box, outcome)
 
 
+async def chapter_assets(db: AsyncSession, chapter_id: str, role: str = "PLAYER") -> dict:
+    """Every picture and sound the live version of a chapter can show or play, so the
+    reader can download them all before the first line instead of on the line that needs
+    them. Sprites cover every outfit variant of each expression used, because which outfit
+    a player wears is only known while playing."""
+    chapter, _ = await _get_playable_chapter(db, chapter_id, role)
+    nodes = await db.scalars(
+        select(PublishedNode).where(
+            PublishedNode.chapter_id == chapter.id, PublishedNode.version == chapter.published_version
+        )
+    )
+    characters = await loader.load_characters(db, chapter.season.story_id)
+    images: list[str] = []
+    audio: list[str] = []
+    for node in nodes:
+        if getattr(node.type, "value", node.type) != "DIALOGUE":
+            continue
+        data = node.data or {}
+        images += [u for u in (data.get("backgroundImageUrl"), data.get("cgImageUrl")) if u]
+        music = data.get("music") or {}
+        audio += [u for u in (music.get("url"), data.get("sfxUrl")) if u]
+        for staged in data.get("staged") or []:
+            sprites = (characters.get(str(staged.get("characterId"))) or {}).get("sprites") or {}
+            expression = staged.get("sprite")
+            images += [
+                url
+                for key, url in sprites.items()
+                if url and (key == expression or key.endswith(f"_{expression}"))
+            ]
+    return {"images": list(dict.fromkeys(images)), "audio": list(dict.fromkeys(audio))}
+
+
 async def advance(
     db: AsyncSession, user_id: str, save_slot_id: str, expected_node_id: str | None = None
 ) -> dict:
