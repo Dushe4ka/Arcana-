@@ -141,6 +141,8 @@ export type DialogueView = {
   staged: StagedCharacterView[];
   canAdvance: boolean;
   stage: StageView;
+  /** Pictures of the next few beats, downloaded ahead so they appear on time. */
+  preload?: string[];
   saveSlot: PlaySaveSlot;
 };
 
@@ -163,6 +165,8 @@ export type ChoiceView = {
   timeoutOptionId: string | null;
   backgroundImageUrl: string | null;
   stage: StageView;
+  /** Pictures of the next few beats, downloaded ahead so they appear on time. */
+  preload?: string[];
   saveSlot: PlaySaveSlot;
 };
 

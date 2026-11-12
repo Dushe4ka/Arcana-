@@ -5,6 +5,7 @@ import {
   Animated,
   AppState,
   Easing,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -189,6 +190,18 @@ export default function ReadingScreen() {
     hydrateSettings();
     load().finally(() => setLoading(false));
   }, [load, hydrateSettings]);
+
+  // Download the pictures of the next few beats while this one is being read, so a
+  // character appears on their own line instead of a few seconds late.
+  const prefetched = useRef(new Set<string>());
+  useEffect(() => {
+    const upcoming = view && view.type !== "END" ? (view.preload ?? []) : [];
+    for (const url of upcoming) {
+      if (prefetched.current.has(url)) continue;
+      prefetched.current.add(url);
+      Image.prefetch(url).catch(() => prefetched.current.delete(url));
+    }
+  }, [view]);
 
   // Music belongs to this screen: it pauses with the app and stops when the reader closes.
   useEffect(() => {

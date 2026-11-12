@@ -1,9 +1,11 @@
 """Validates and stores uploaded media (images, GIF sprites, audio)."""
 
+import io
 import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image, ImageOps
 
 from app.config import settings
 
@@ -11,6 +13,13 @@ MB = 1024 * 1024
 MAX_IMAGE_BYTES = 10 * MB
 MAX_AUDIO_BYTES = 20 * MB
 MAX_UPLOAD_BYTES = MAX_AUDIO_BYTES
+
+# Images are shown on phones: nothing is ever drawn taller than a phone screen (about
+# 2400-2600 px), so a 2000x4600 sprite canvas is cut to half its size - 7.6 MB became
+# 1.7 MB, and the character no longer appears seconds late while the phone downloads it.
+# Landscape backgrounds (shown cropped to the screen height) are left as they are.
+MAX_IMAGE_HEIGHT = 2400
+MAX_IMAGE_WIDTH = 4096
 
 
 def _sniff(head: bytes) -> str | None:
@@ -80,9 +89,43 @@ async def save_upload(file: UploadFile, focal_x: float | None = None, focal_y: f
     uploads_dir = Path(settings.uploads_dir)
     uploads_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid.uuid4().hex}{extension}"
+    smaller = shrink_image(contents, kind)
+    if smaller is not None:
+        # The full-size original is kept next to the served file, so nothing the author
+        # uploaded is ever lost.
+        originals = uploads_dir / "originals"
+        originals.mkdir(exist_ok=True)
+        (originals / filename).write_bytes(contents)
+        contents = smaller
     (uploads_dir / filename).write_bytes(contents)
 
     url = f"{settings.public_base_url}/uploads/{filename}"
     if focal_x is not None and focal_y is not None:
         url += f"?fx={focal_x}&fy={focal_y}"
     return url
+
+
+def shrink_image(contents: bytes, kind: str) -> bytes | None:
+    """Scales a PNG/JPEG down to what a phone can show, in the same format. Returns None
+    when the image is already small enough (or is not a still PNG/JPEG), so the original
+    bytes are stored untouched."""
+    if kind not in ("image/png", "image/jpeg"):
+        return None
+    try:
+        with Image.open(io.BytesIO(contents)) as image:
+            width, height = image.size
+            scale = min(1.0, MAX_IMAGE_HEIGHT / height, MAX_IMAGE_WIDTH / width)
+            if scale >= 1.0:
+                return None
+            image = ImageOps.exif_transpose(image)
+            size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
+            resized = image.resize(size, Image.Resampling.LANCZOS)
+            out = io.BytesIO()
+            if kind == "image/png":
+                resized.save(out, "PNG", optimize=True)
+            else:
+                resized.convert("RGB").save(out, "JPEG", quality=88, optimize=True, progressive=True)
+            return out.getvalue()
+    except (OSError, ValueError, Image.DecompressionBombError):
+        # Unreadable by Pillow but it passed the magic-byte check: store it as uploaded.
+        return None

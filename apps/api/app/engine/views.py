@@ -30,6 +30,43 @@ def resolve_staged(characters: dict[str, dict], staged: list, values: dict) -> l
     return result
 
 
+def _successors(node) -> list[str]:
+    data = node.data
+    if node.type == "CHOICE":
+        return [o.next_node_id for o in node.options if o.next_node_id]
+    if node.type == "CONDITION":
+        return [i for i in (data.then_node_id, data.else_node_id) if i]
+    return [data.next_node_id] if getattr(data, "next_node_id", None) else []
+
+
+def upcoming_images(
+    graph: StoryGraph, node, characters: dict[str, dict], values: dict, depth: int = 3
+) -> list[str]:
+    """Pictures of the next few beats that are already in memory (the play loader brings
+    in each node's direct continuations): sprites, backgrounds and illustrations. The
+    reader downloads them while the current line is being read, so a character does not
+    appear late on their line."""
+    urls: list[str] = []
+    seen_nodes = {node.id}
+    frontier = _successors(node)
+    for _ in range(depth):
+        following: list[str] = []
+        for node_id in frontier:
+            if node_id in seen_nodes or node_id not in graph.nodes:
+                continue
+            seen_nodes.add(node_id)
+            upcoming = graph.nodes[node_id]
+            if upcoming.type == "DIALOGUE":
+                data = upcoming.data
+                urls += [
+                    s["spriteUrl"] for s in resolve_staged(characters, data.staged, values) if s["spriteUrl"]
+                ]
+                urls += [u for u in (data.background_image_url, data.cg_image_url) if u]
+            following += _successors(upcoming)
+        frontier = following
+    return list(dict.fromkeys(urls))
+
+
 def _stage_view(state: EngineState, cues: dict) -> dict:
     return {**state.stage, **{k: v for k, v in cues.items()}}
 
@@ -77,6 +114,7 @@ def build_view(
             "canAdvance": bool(data.next_node_id),
             "nextNodeId": data.next_node_id,
             "stage": stage,
+            "preload": upcoming_images(graph, node, characters, values),
         }
 
     owned = owned_option_ids or set()
@@ -107,4 +145,5 @@ def build_view(
         "timeoutOptionId": node.data.timeout_option_id,
         "backgroundImageUrl": state.stage.get("backgroundUrl"),
         "stage": stage,
+        "preload": upcoming_images(graph, node, characters, values),
     }

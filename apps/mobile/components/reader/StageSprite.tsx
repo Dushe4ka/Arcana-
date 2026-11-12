@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, StyleSheet } from "react-native";
 
 import type { StagedCharacterView } from "../../lib/types";
@@ -24,6 +24,10 @@ export function StageSprite({
   const offsetX = useRef(new Animated.Value(0)).current;
   const offsetY = useRef(new Animated.Value(0)).current;
   const lean = useRef(new Animated.Value(1)).current;
+  // The entrance waits for the picture: started on mount it ran its course while a large
+  // sprite was still downloading, and the character then popped in late with no fade.
+  const [loadedUri, setLoadedUri] = useState<string | null>(null);
+  const ready = loadedUri === staged.spriteUrl;
 
   useEffect(() => {
     if (reduceMotion) {
@@ -48,7 +52,8 @@ export function StageSprite({
     offsetX.setValue(animation === "slide_in" ? side * 160 : 0);
     offsetY.setValue(0);
     lean.setValue(1);
-    opacity.setValue(reduceMotion ? 1 : 0);
+    opacity.setValue(reduceMotion && ready ? 1 : 0);
+    if (!ready) return;
 
     const parts: Animated.CompositeAnimation[] = [
       Animated.timing(opacity, {
@@ -85,7 +90,7 @@ export function StageSprite({
     const running = Animated.parallel(parts);
     running.start();
     return () => running.stop();
-  }, [staged.spriteUrl, staged.animation, staged.position, reduceMotion]);
+  }, [staged.spriteUrl, staged.animation, staged.position, reduceMotion, ready]);
 
   if (!staged.spriteUrl) return null;
 
@@ -95,6 +100,9 @@ export function StageSprite({
     <Animated.Image
       source={{ uri: staged.spriteUrl }}
       resizeMode="contain"
+      onLoad={() => setLoadedUri(staged.spriteUrl)}
+      // A broken picture must not keep the character hidden for good.
+      onError={() => setLoadedUri(staged.spriteUrl)}
       style={[
         styles.sprite,
         staged.position === "left" && styles.left,
