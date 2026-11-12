@@ -214,7 +214,12 @@ export default function CatalogScreen() {
                     showBadge: false,
                   },
                   { category: "favorites", label: "Избранное", stories: favoriteStories, showBadge: false },
-                  ...STORY_GENRES.map((genre) => ({ category: genre, label: GENRE_LABELS[genre], stories: byGenre[genre] })),
+                  ...STORY_GENRES.map((genre) => ({
+                    category: genre,
+                    label: GENRE_LABELS[genre],
+                    stories: byGenre[genre],
+                    keepEmpty: true,
+                  })),
                 ]}
                 onPressStory={openStory}
                 onShelfLayout={(category, y, height) => {

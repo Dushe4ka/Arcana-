@@ -47,6 +47,8 @@ export type BookcaseShelf = {
   stories: StorySummary[];
   /** Genre shelves spotlight their newest story; "continue" and "favourites" do not. */
   showBadge?: boolean;
+  /** Genre shelves stand in the cabinet even before their first story arrives. */
+  keepEmpty?: boolean;
 };
 
 export function Bookcase({
@@ -60,7 +62,8 @@ export function Bookcase({
   onShelfLayout?: (category: string, y: number, height: number) => void;
 }) {
   const { width: screen } = useWindowDimensions();
-  const width = Math.min(screen - 20, 520);
+  // Edge to edge: the tips of the cornice reach the sides of the screen.
+  const width = Math.min(screen, 640);
   const k = width / ART_WIDTH;
   const nicheLeft = NICHE_LEFT * k;
   const nicheWidth = width - (NICHE_LEFT + NICHE_RIGHT) * k;
@@ -69,18 +72,21 @@ export function Bookcase({
   const bookHeight = Math.round(bookWidth * 1.5);
   const shelfHeight = bookHeight + 40;
 
-  const visible = shelves.filter((shelf) => shelf.stories.length > 0);
+  const visible = shelves.filter((shelf) => shelf.keepEmpty || shelf.stories.length > 0);
   if (visible.length === 0) return null;
 
   return (
     <View style={[styles.case, { width }]}>
-      <Image source={ART.crown} style={{ width, height: CROWN * k }} />
+      {/* Every piece is stretched to its box: with the default "cover" a fractional height
+          rounded differently on one shelf zooms that piece and shifts its posts sideways. */}
+      <Image source={ART.crown} resizeMode="stretch" style={{ width, height: CROWN * k }} />
       {visible.map((shelf, index) => {
         const first = index === 0;
         const last = index === visible.length - 1;
         const floorInBase = last ? BASE_FLOOR * k : 0;
+        const empty = shelf.stories.length === 0;
         const newestId =
-          shelf.showBadge === false
+          shelf.showBadge === false || empty
             ? null
             : shelf.stories.reduce((newest, story) => (new Date(story.createdAt) > new Date(newest.createdAt) ? story : newest)).id;
         const onLayout = (e: LayoutChangeEvent) => onShelfLayout?.(shelf.category, e.nativeEvent.layout.y, e.nativeEvent.layout.height);
@@ -91,7 +97,11 @@ export function Bookcase({
               resizeMode="stretch"
               style={{ width, height: shelfHeight - floorInBase }}
             />
-            <Image source={last ? ART.base : ART.plank} style={{ width, height: (last ? BASE : PLANK) * k }} />
+            <Image
+              source={last ? ART.base : ART.plank}
+              resizeMode="stretch"
+              style={{ width, height: (last ? BASE : PLANK) * k }}
+            />
 
             {/* Everything standing in the niche: its bottom edge is the plank / cabinet floor. */}
             <View style={[styles.niche, { left: nicheLeft, width: nicheWidth, height: shelfHeight }]}>
@@ -101,15 +111,17 @@ export function Bookcase({
                     {shelf.label}
                   </Text>
                 </View>
-                <Pressable
-                  hitSlop={14}
-                  onPress={() => router.push(`/(app)/library/${shelf.category}`)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${shelf.label}: показать все`}
-                  style={styles.showAll}
-                >
-                  <Text style={styles.showAllText}>все ›</Text>
-                </Pressable>
+                {empty ? null : (
+                  <Pressable
+                    hitSlop={14}
+                    onPress={() => router.push(`/(app)/library/${shelf.category}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${shelf.label}: показать все`}
+                    style={styles.showAll}
+                  >
+                    <Text style={styles.showAllText}>все ›</Text>
+                  </Pressable>
+                )}
               </View>
               <ScrollView
                 horizontal
