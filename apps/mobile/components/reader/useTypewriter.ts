@@ -38,5 +38,8 @@ export function useTypewriter(text: string, charsPerSecond: number, key: string)
     setShown(text.length);
   }, [text]);
 
+  // Shown whole: answer from the text itself, so a new line never flashes cut to the
+  // previous line's length for the one render before the effect catches up.
+  if (charsPerSecond <= 0) return { visibleText: text, done: true, finish };
   return { visibleText: text.slice(0, shown), done: shown >= text.length, finish };
 }

@@ -23,7 +23,8 @@ export type ReaderSettings = {
 };
 
 export const DEFAULT_READER_SETTINGS: ReaderSettings = {
-  textSpeed: 45,
+  // Lines appear whole by default (the owner's call); the typewriter is an opt-in setting.
+  textSpeed: 0,
   autoTapSeconds: 0,
   menuHintSeen: false,
   fontScale: 1,
@@ -35,10 +36,10 @@ export const DEFAULT_READER_SETTINGS: ReaderSettings = {
 };
 
 export const TEXT_SPEEDS = [
-  { value: 25, label: "Медленно" },
-  { value: 45, label: "Обычно" },
-  { value: 90, label: "Быстро" },
   { value: 0, label: "Сразу" },
+  { value: 90, label: "Быстро" },
+  { value: 45, label: "Обычно" },
+  { value: 25, label: "Медленно" },
 ] as const;
 
 export const AUTO_TAP_OPTIONS = [
@@ -70,7 +71,10 @@ export const FONT_SCALES = [
   { value: 1.3, label: "Очень крупный" },
 ] as const;
 
-const STORAGE_KEY = "arcana.reader-settings.v1";
+const STORAGE_KEY = "arcana.reader-settings.v2";
+/** v1 saved every field, so its textSpeed of 45 is the old default, not a choice: settings
+ * carried over from it start with lines appearing whole, everything else is kept. */
+const LEGACY_STORAGE_KEY = "arcana.reader-settings.v1";
 
 type Store = ReaderSettings & {
   hydrated: boolean;
@@ -97,7 +101,15 @@ export const useReaderSettings = create<Store>((set, get) => ({
     if (get().hydrated) return;
     try {
       const raw = await SecureStore.getItemAsync(STORAGE_KEY);
-      if (raw) set({ ...DEFAULT_READER_SETTINGS, ...(JSON.parse(raw) as Partial<ReaderSettings>) });
+      if (raw) {
+        set({ ...DEFAULT_READER_SETTINGS, ...(JSON.parse(raw) as Partial<ReaderSettings>) });
+      } else {
+        const legacy = await SecureStore.getItemAsync(LEGACY_STORAGE_KEY);
+        if (legacy) {
+          set({ ...DEFAULT_READER_SETTINGS, ...(JSON.parse(legacy) as Partial<ReaderSettings>), textSpeed: 0 });
+          persist(pick(get()));
+        }
+      }
     } catch {
       // Corrupt or unreadable storage: keep defaults.
     }
