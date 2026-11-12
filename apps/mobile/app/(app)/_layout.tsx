@@ -27,6 +27,7 @@ export default function AppLayout() {
       <Stack.Screen name="story/[id]" options={{ headerShown: false }} />
       {/* Same reasoning as story/[id] - its own back button, no native header. */}
       <Stack.Screen name="library/[category]" options={{ headerShown: false }} />
+      <Stack.Screen name="tarot" options={{ headerShown: false, animation: "fade" }} />
       <Stack.Screen name="collections" options={{ title: "Коллекции", headerBackTitle: "Профиль" }} />
       <Stack.Screen name="security" options={{ title: "Безопасность", headerBackTitle: "Профиль" }} />
     </Stack>

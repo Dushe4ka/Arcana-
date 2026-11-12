@@ -11,7 +11,13 @@
       "expo-router",
       "expo-secure-store",
       "expo-asset",
-      ["expo-audio", { "microphonePermission": false }]
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false
+        }
+      ],
+      "expo-video"
     ],
     "ios": {
       "supportsTablet": true,

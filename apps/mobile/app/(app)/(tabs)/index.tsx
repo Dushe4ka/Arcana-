@@ -17,6 +17,7 @@ import { CinemaHall } from "../../../components/CinemaHall";
 import { ContinueSection } from "../../../components/ContinueSection";
 import { GenreTabs } from "../../../components/GenreTabs";
 import { HomeBackground } from "../../../components/HomeBackground";
+import { HomeDock } from "../../../components/HomeDock";
 import { HomeHeader } from "../../../components/HomeHeader";
 import { apiRequest, ApiError } from "../../../lib/api";
 import { useAuthStore } from "../../../lib/auth-store";
@@ -227,6 +228,7 @@ export default function CatalogScreen() {
           <CinemaHall stories={series} onPressStory={openStory} />
         )}
       </ScrollView>
+      <HomeDock />
     </View>
   );
 }
@@ -234,7 +236,8 @@ export default function CatalogScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.background },
-  content: { paddingTop: 68, paddingBottom: 56, gap: 40 },
+  // Bottom room so the last shelf is not hidden behind the dock.
+  content: { paddingTop: 68, paddingBottom: 110, gap: 40 },
   error: { color: colors.danger, paddingHorizontal: 20 },
   sectionTabs: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20 },
   sectionRule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.accentMuted },

@@ -1,6 +1,6 @@
 /** ARCANA's three resources, named in one place.
  *
- *   Зёрна  - earned by reading (the API's "soft" currency)
+ *   Зёрна  - coffee beans, earned by reading (the API's "soft" currency)
  *   Карты  - the premium resource (the API's "hard" currency)
  *   Ключи  - open chapters (the API's "energy")
  *

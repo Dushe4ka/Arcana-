@@ -9,7 +9,6 @@ import {
 import {
   PlayfairDisplay_600SemiBold,
   PlayfairDisplay_700Bold,
-  PlayfairDisplay_700Bold_Italic,
   useFonts,
 } from "@expo-google-fonts/playfair-display";
 
@@ -33,8 +32,7 @@ export function useBootProgress(): { progress: Animated.Value; ready: boolean } 
   const [fontsLoaded] = useFonts({
     PlayfairDisplay_600SemiBold,
     PlayfairDisplay_700Bold,
-    PlayfairDisplay_700Bold_Italic,
-    CormorantGaramond_600SemiBold,
+      CormorantGaramond_600SemiBold,
     CormorantGaramond_700Bold,
     CormorantGaramond_500Medium_Italic,
   });

@@ -7,11 +7,11 @@ import { t } from "../lib/locale";
 import { useReduceMotion } from "../lib/use-reduce-motion";
 import type { StorySummary } from "../lib/types";
 
-const SCREEN_BLACK = "#0c0a08";
+const VEIL = "rgba(26,20,15,";
 
-/** The cinema hall: tonight's premiere as a full-width poster with the title set over it
- * in big italics, then the rest of the programme as a strip of posters - a film programme,
- * not a bookshelf. */
+/** The cinema hall: the newest mini-series as a wide poster with its title over the image,
+ * then the rest of the programme as a strip of posters. Everything sits on a translucent
+ * veil, so the room behind stays visible - same voice (Cormorant) as the library. */
 export function CinemaHall({ stories, onPressStory }: { stories: StorySummary[]; onPressStory: (story: StorySummary) => void }) {
   const { width } = useWindowDimensions();
   const still = useReduceMotion();
@@ -31,12 +31,10 @@ export function CinemaHall({ stories, onPressStory }: { stories: StorySummary[];
 
   if (stories.length === 0) {
     return (
-      <View style={styles.empty}>
-        <View style={styles.emptyScreen}>
-          <Text style={styles.kicker}>Скоро на экране</Text>
-          <Text style={styles.emptyTitle}>Зал готовится к премьере</Text>
-          <Text style={styles.emptyText}>Мини-сериалы появятся здесь, как только выйдет первый.</Text>
-        </View>
+      <View style={[styles.hall, styles.empty]}>
+        <Text style={styles.kicker}>Скоро на экране</Text>
+        <Text style={styles.emptyTitle}>Зал готовится к премьере</Text>
+        <Text style={styles.emptyText}>Мини-сериалы появятся здесь, как только выйдет первый.</Text>
       </View>
     );
   }
@@ -44,8 +42,9 @@ export function CinemaHall({ stories, onPressStory }: { stories: StorySummary[];
   // The newest series opens the programme.
   const sorted = [...stories].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const [premiere, ...rest] = sorted;
-  const heroHeight = Math.min(520, Math.round(width * 1.18));
-  const posterWidth = Math.round((width - 20 * 2 - 12 * 2) / 2.6);
+  const inner = width - 24;
+  const heroHeight = Math.min(440, Math.round(inner * 1.05));
+  const posterWidth = Math.round((inner - 16 * 2 - 12 * 2) / 2.6);
 
   return (
     <View style={styles.hall}>
@@ -61,13 +60,13 @@ export function CinemaHall({ stories, onPressStory }: { stories: StorySummary[];
           {premiere.coverImageUrl ? (
             <Image source={{ uri: premiere.coverImageUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
           ) : (
-            <LinearGradient colors={["#6f5348", "#3a2a20", SCREEN_BLACK]} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={["rgba(111,83,72,0.75)", "rgba(58,42,32,0.6)", `${VEIL}0.4)`]} style={StyleSheet.absoluteFill} />
           )}
         </Animated.View>
-        {/* Letterbox: the image fades to black at both edges, the title sits on the lower fade. */}
+        {/* The image melts into the veil at the bottom, where the title sits. */}
         <LinearGradient
-          colors={[SCREEN_BLACK, "rgba(12,10,8,0.15)", "rgba(12,10,8,0.1)", "rgba(12,10,8,0.82)", SCREEN_BLACK]}
-          locations={[0, 0.16, 0.42, 0.78, 1]}
+          colors={[`${VEIL}0)`, `${VEIL}0.15)`, `${VEIL}0.86)`]}
+          locations={[0, 0.45, 1]}
           style={StyleSheet.absoluteFill}
           pointerEvents="none"
         />
@@ -82,7 +81,7 @@ export function CinemaHall({ stories, onPressStory }: { stories: StorySummary[];
             </Text>
           ) : null}
           <View style={styles.cta}>
-            <Text style={styles.ctaText}>▶  Смотреть</Text>
+            <Text style={styles.ctaText}>Смотреть</Text>
           </View>
         </View>
       </Pressable>
@@ -90,11 +89,12 @@ export function CinemaHall({ stories, onPressStory }: { stories: StorySummary[];
       {rest.length > 0 ? (
         <>
           <View style={styles.stripHead}>
+            <View style={styles.rule} />
             <Text style={styles.stripTitle}>В программе</Text>
-            <Text style={styles.stripCount}>{rest.length}</Text>
+            <View style={styles.rule} />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.strip}>
-            {rest.map((story, index) => (
+            {rest.map((story) => (
               <Pressable
                 key={story.id}
                 onPress={() => onPressStory(story)}
@@ -106,10 +106,8 @@ export function CinemaHall({ stories, onPressStory }: { stories: StorySummary[];
                   {story.coverImageUrl ? (
                     <Image source={{ uri: story.coverImageUrl }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                   ) : (
-                    <LinearGradient colors={["#6f5348", "#3a2a20", "#14100d"]} style={StyleSheet.absoluteFill} />
+                    <LinearGradient colors={["#6f5348", "#3a2a20", "#1a1613"]} style={StyleSheet.absoluteFill} />
                   )}
-                  <LinearGradient colors={["transparent", "rgba(12,10,8,0.85)"]} style={styles.posterFade} pointerEvents="none" />
-                  <Text style={styles.posterIndex}>{index + 2}</Text>
                 </View>
                 <Text style={styles.posterTitle} numberOfLines={2}>
                   {t(story.title)}
@@ -124,25 +122,40 @@ export function CinemaHall({ stories, onPressStory }: { stories: StorySummary[];
 }
 
 const styles = StyleSheet.create({
-  hall: { backgroundColor: SCREEN_BLACK, paddingBottom: 28 },
-  hero: { overflow: "hidden", justifyContent: "flex-end", backgroundColor: SCREEN_BLACK },
-  heroText: { paddingHorizontal: 20, paddingBottom: 22, gap: 6 },
-  kicker: { color: colors.accent, fontSize: 11, letterSpacing: 3.2, textTransform: "uppercase", fontWeight: "700" },
-  heroTitle: { color: colors.text, fontSize: 46, lineHeight: 46, fontFamily: fonts.poster, letterSpacing: -0.4 },
-  heroMeta: { color: colors.textMuted, fontSize: 13, lineHeight: 18, maxWidth: 320 },
-  cta: { alignSelf: "flex-start", marginTop: 10, minHeight: 46, justifyContent: "center", paddingHorizontal: 22, backgroundColor: colors.text, borderRadius: 2 },
-  ctaText: { color: SCREEN_BLACK, fontSize: 14, fontWeight: "700", letterSpacing: 0.3 },
-  stripHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 22, paddingBottom: 12 },
-  stripTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  stripCount: { color: colors.textMuted, fontSize: 13 },
-  strip: { paddingHorizontal: 20, gap: 12 },
+  hall: {
+    marginHorizontal: 12,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: `${VEIL}0.46)`,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(212,175,106,0.5)",
+    paddingBottom: 20,
+  },
+  hero: { overflow: "hidden", justifyContent: "flex-end" },
+  heroText: { paddingHorizontal: 18, paddingBottom: 18, gap: 4 },
+  kicker: { color: colors.accent, fontSize: 11, letterSpacing: 3, textTransform: "uppercase" },
+  heroTitle: { color: colors.text, fontSize: 38, lineHeight: 40, fontFamily: fonts.grimoireBold, letterSpacing: 0.3 },
+  heroMeta: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
+  cta: {
+    alignSelf: "flex-start",
+    marginTop: 10,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    backgroundColor: "rgba(212,175,106,0.14)",
+  },
+  ctaText: { color: colors.accent, fontSize: 18, fontFamily: fonts.grimoire, letterSpacing: 0.6 },
+  stripHead: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 12 },
+  rule: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.accentMuted },
+  stripTitle: { color: colors.text, fontSize: 19, fontFamily: fonts.grimoire, letterSpacing: 0.5 },
+  strip: { paddingHorizontal: 16, gap: 12 },
   pressed: { opacity: 0.8 },
-  poster: { borderRadius: 2, overflow: "hidden", backgroundColor: "#1a1613" },
-  posterFade: { position: "absolute", left: 0, right: 0, bottom: 0, height: "45%" },
-  posterIndex: { position: "absolute", left: 8, bottom: 2, color: colors.text, fontSize: 34, fontFamily: fonts.poster, opacity: 0.9 },
-  posterTitle: { marginTop: 8, color: colors.text, fontSize: 13, fontWeight: "600", lineHeight: 16 },
-  empty: { backgroundColor: SCREEN_BLACK, paddingHorizontal: 20, paddingVertical: 28 },
-  emptyScreen: { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, paddingVertical: 56, paddingHorizontal: 24, alignItems: "center", gap: 10 },
-  emptyTitle: { color: colors.text, fontSize: 28, lineHeight: 32, fontFamily: fonts.poster, textAlign: "center" },
+  poster: { borderRadius: 4, overflow: "hidden", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(212,175,106,0.4)" },
+  posterTitle: { marginTop: 8, color: colors.text, fontSize: 15, lineHeight: 17, fontFamily: fonts.grimoire, textAlign: "center" },
+  empty: { paddingVertical: 48, paddingHorizontal: 24, alignItems: "center", gap: 8 },
+  emptyTitle: { color: colors.text, fontSize: 26, lineHeight: 30, fontFamily: fonts.grimoireBold, textAlign: "center" },
   emptyText: { color: colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: "center" },
 });

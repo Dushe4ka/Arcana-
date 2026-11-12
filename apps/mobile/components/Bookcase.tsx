@@ -61,8 +61,7 @@ export function Bookcase({
   onShelfLayout?: (category: string, y: number, height: number) => void;
 }) {
   const { width: screen } = useWindowDimensions();
-  // Edge to edge: the carved crown's tips reach the sides of the screen.
-  const width = Math.min(screen, 640);
+  const width = Math.min(screen - 20, 520);
   const k = width / ART_WIDTH;
   const nicheLeft = NICHE_LEFT * k;
   const nicheWidth = width - (NICHE_LEFT + NICHE_RIGHT) * k;

@@ -1,17 +1,21 @@
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import type { ReactNode } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
-import Ionicons from "@expo/vector-icons/Ionicons";
 
 import { GlassSurface } from "./GlassSurface";
+import { BeanIcon, CardIcon, KeyIcon } from "./ResourceIcons";
+import { CURRENCY } from "../lib/currency";
 import { colors, radius } from "../lib/theme";
 import type { PublicUser, Wallet } from "../lib/types";
 
-function CurrencyPill({ icon, value, color }: { icon: "sparkles" | "cafe"; value: number; color: string }) {
+function ResourcePill({ icon, value, name }: { icon: ReactNode; value: number; name: string }) {
   return (
-    <GlassSurface style={styles.pill}>
-      <Ionicons name={icon} size={14} color={color} />
-      <Text style={styles.pillValue}>{value}</Text>
-    </GlassSurface>
+    <View accessible accessibilityLabel={`${name}: ${value}`}>
+      <GlassSurface style={styles.pill}>
+        {icon}
+        <Text style={styles.pillValue}>{value}</Text>
+      </GlassSurface>
+    </View>
   );
 }
 
@@ -50,25 +54,14 @@ export function HomeHeader({ user, wallet }: { user: PublicUser | null; wallet: 
         ) : null}
       </View>
 
+      {/* The three resources: coffee beans, cards, keys. */}
       {wallet ? (
         <View style={styles.pills}>
-          <CurrencyPill icon="sparkles" value={wallet.hard} color={colors.accent} />
-          <CurrencyPill icon="cafe" value={wallet.energy} color={colors.soft} />
+          <ResourcePill icon={<BeanIcon size={15} />} value={wallet.soft} name={CURRENCY.SOFT.name} />
+          <ResourcePill icon={<CardIcon size={15} />} value={wallet.hard} name={CURRENCY.HARD.name} />
+          <ResourcePill icon={<KeyIcon size={14} />} value={wallet.energy} name={CURRENCY.ENERGY.name} />
         </View>
       ) : null}
-
-      <Pressable
-        hitSlop={6}
-        onPress={() =>
-          Alert.alert("Уведомления", "Раздел уведомлений пока не готов. Загляните позже.")
-        }
-        style={({ pressed }) => [pressed && styles.pressed]}
-      >
-        <GlassSurface style={styles.bell}>
-          <Ionicons name="notifications-outline" size={19} color={colors.text} />
-          <View style={styles.bellDot} />
-        </GlassSurface>
-      </Pressable>
     </GlassSurface>
   );
 }
@@ -80,10 +73,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginHorizontal: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: radius.lg,
-    gap: 16,
+    gap: 10,
   },
   avatarWrap: {
     width: AVATAR_SIZE,
@@ -141,33 +134,15 @@ const styles = StyleSheet.create({
   xpLabel: { color: colors.textMuted, fontSize: 11 },
   pills: {
     flexDirection: "row",
-    gap: 10,
+    gap: 6,
   },
   pill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
     borderRadius: radius.md,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 8,
   },
   pillValue: { color: colors.text, fontSize: 13, fontWeight: "600" },
-  bell: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bellDot: {
-    position: "absolute",
-    top: 7,
-    right: 8,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.rose,
-    borderWidth: 1.5,
-    borderColor: colors.background,
-  },
 });
