@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from "react-native";
+import { AccessibilityInfo, Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { colors } from "../lib/theme";
+import { colors, fonts } from "../lib/theme";
 
 const COUNT = 6;
 const BASE_RADIUS = 22;
 const SCATTER_RADIUS = 64;
+const LABEL_RADIUS = 36;
 const SPIN_DURATION = 5200;
 const SCATTER_CYCLE = [
   { toValue: 0, duration: 0 },
@@ -22,10 +23,20 @@ const SCATTER_CYCLE = [
  * outward and pulls back in; because each star sits at a different angle
  * already, "further along its own radius" reads as "flies off in its own
  * direction" without needing a second, independent animation per star. */
-function OrbitStar({ index, rotation, scatter }: { index: number; rotation: Animated.Value; scatter: Animated.Value }) {
+function OrbitStar({
+  index,
+  rotation,
+  scatter,
+  baseRadius,
+}: {
+  index: number;
+  rotation: Animated.Value;
+  scatter: Animated.Value;
+  baseRadius: number;
+}) {
   const baseAngle = `${(360 / COUNT) * index}deg`;
   const spin = rotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
-  const radius = scatter.interpolate({ inputRange: [0, 1], outputRange: [BASE_RADIUS, SCATTER_RADIUS] });
+  const radius = scatter.interpolate({ inputRange: [0, 1], outputRange: [baseRadius, baseRadius + SCATTER_RADIUS - BASE_RADIUS] });
 
   return (
     <Animated.View style={[styles.pivot, { transform: [{ rotate: baseAngle }, { rotate: spin }] }]}>
@@ -50,7 +61,10 @@ function OrbitStar({ index, rotation, scatter }: { index: number; rotation: Anim
  * three.js/expo-gl, since this renders on the very first screen at cold
  * start and that GL stack was the root cause of the startup crashes fixed
  * earlier in this project. */
-export function LoadingOrbit({ size = 140 }: { size?: number }) {
+/** `label` (a percentage, say) sits in the middle of the ring, which is then drawn wider
+ * so the stars circle the text instead of crossing it. */
+export function LoadingOrbit({ size = 140, label }: { size?: number; label?: string }) {
+  const baseRadius = label ? LABEL_RADIUS : BASE_RADIUS;
   const rotation = useRef(new Animated.Value(0)).current;
   const scatter = useRef(new Animated.Value(0)).current;
   const [reduceMotion, setReduceMotion] = useState(false);
@@ -85,17 +99,21 @@ export function LoadingOrbit({ size = 140 }: { size?: number }) {
   return (
     <View style={{ width: size, height: size, alignItems: "center", justifyContent: "center" }} pointerEvents="none">
       {reduceMotion ? (
-        <View style={styles.head} />
+        label ? null : (
+          <View style={styles.head} />
+        )
       ) : (
         Array.from({ length: COUNT }, (_, i) => (
-          <OrbitStar key={i} index={i} rotation={rotation} scatter={scatter} />
+          <OrbitStar key={i} index={i} rotation={rotation} scatter={scatter} baseRadius={baseRadius} />
         ))
       )}
+      {label ? <Text style={styles.label}>{label}</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  label: { color: colors.accent, fontSize: 22, fontFamily: fonts.grimoireBold, fontVariant: ["tabular-nums"] },
   pivot: {
     position: "absolute",
   },

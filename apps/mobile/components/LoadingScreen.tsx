@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Animated, Image, StyleSheet, View, useWindowDimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,7 +29,17 @@ const LOGO_ASPECT = 1429 / 172;
 // label) - needed to find its top edge from the other side.
 const BAR_CONTENT_HEIGHT = 30;
 
-export function LoadingScreen({ progress }: { progress: Animated.Value }) {
+/** Two uses: app boot (`progress` drives the bar at the bottom) and chapter download in the
+ * reader (`percent` is shown inside the ring of stars, no bar; `footer` takes the bar's place). */
+export function LoadingScreen({
+  progress,
+  percent,
+  footer,
+}: {
+  progress?: Animated.Value;
+  percent?: number;
+  footer?: ReactNode;
+}) {
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const heroHeight = screenWidth / HERO_ASPECT;
@@ -84,13 +95,13 @@ export function LoadingScreen({ progress }: { progress: Animated.Value }) {
       </View>
 
       <View style={[styles.orbitWrap, { top: logoBottom, bottom: barTopFromBottom }]} pointerEvents="none">
-        <LoadingOrbit />
+        <LoadingOrbit label={percent === undefined ? undefined : `${Math.round(percent)}%`} />
       </View>
 
       {/* Same paddingBottom the login screen's "Войти" button sits on
           (insets.bottom + 20 there) - same slot, same resting place. */}
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 20 }]}>
-        <LoadingProgressBar progress={progress} />
+        {progress ? <LoadingProgressBar progress={progress} /> : footer}
       </View>
     </View>
   );

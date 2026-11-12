@@ -18,6 +18,7 @@ import { router, Stack, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Button } from "../../components/Button";
+import { LoadingScreen } from "../../components/LoadingScreen";
 import { Atmosphere } from "../../components/reader/Atmosphere";
 import { DialogueLog } from "../../components/reader/DialogueLog";
 import { ReaderSettingsSheet } from "../../components/reader/ReaderSettingsSheet";
@@ -404,23 +405,20 @@ export default function ReadingScreen() {
   };
 
   if (preparing) {
-    const progress = preparing.total > 0 ? preparing.done / preparing.total : 0;
     return (
-      <View style={styles.center}>
+      <>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.prepareTitle}>Готовим главу</Text>
-        <Text style={styles.prepareNote}>
-          {preparing.total > 0 ? `Загружено ${preparing.done} из ${preparing.total}` : "Собираем сцены…"}
-        </Text>
-        <View style={styles.prepareTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: preparing.total, now: preparing.done }}>
-          <View style={[styles.prepareFill, { width: `${Math.round(progress * 100)}%` }]} />
-        </View>
-        {preparing.canSkip ? (
-          <Pressable onPress={() => skipPreparing.current?.()} hitSlop={12} style={styles.prepareSkip} accessibilityRole="button">
-            <Text style={styles.prepareSkipText}>Начать сейчас</Text>
-          </Pressable>
-        ) : null}
-      </View>
+        <LoadingScreen
+          percent={preparing.total > 0 ? (preparing.done / preparing.total) * 100 : 0}
+          footer={
+            preparing.canSkip ? (
+              <Pressable onPress={() => skipPreparing.current?.()} hitSlop={12} style={styles.prepareSkip} accessibilityRole="button">
+                <Text style={styles.prepareSkipText}>Начать сейчас</Text>
+              </Pressable>
+            ) : null
+          }
+        />
+      </>
     );
   }
 
@@ -897,20 +895,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   errorText: { color: colors.danger, textAlign: "center", fontSize: 15, lineHeight: 22 },
-  prepareTitle: { color: colors.text, fontSize: 26, fontFamily: fonts.grimoireBold, textAlign: "center" },
-  prepareNote: { color: colors.textMuted, fontSize: 17, fontFamily: fonts.grimoireItalic, textAlign: "center" },
-  prepareTrack: {
-    alignSelf: "center",
-    width: "70%",
-    maxWidth: 320,
-    height: 3,
-    marginTop: 18,
-    borderRadius: 2,
-    overflow: "hidden",
-    backgroundColor: "rgba(212,175,106,0.18)",
-  },
-  prepareFill: { height: "100%", backgroundColor: colors.accent },
-  prepareSkip: { alignSelf: "center", marginTop: 22, minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
+  prepareSkip: { alignSelf: "center", minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
   prepareSkipText: { color: colors.accent, fontSize: 17, fontFamily: fonts.grimoire, textDecorationLine: "underline" },
   world: { ...StyleSheet.absoluteFillObject },
   scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(10,8,18,0.25)" },
