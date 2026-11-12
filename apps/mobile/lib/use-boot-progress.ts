@@ -4,9 +4,9 @@ import { Asset } from "expo-asset";
 import {
   CormorantGaramond_500Medium_Italic,
   CormorantGaramond_600SemiBold,
+  CormorantGaramond_600SemiBold_Italic,
   CormorantGaramond_700Bold,
 } from "@expo-google-fonts/cormorant-garamond";
-import { Forum_400Regular } from "@expo-google-fonts/forum";
 import {
   PlayfairDisplay_600SemiBold,
   PlayfairDisplay_700Bold,
@@ -36,7 +36,7 @@ export function useBootProgress(): { progress: Animated.Value; ready: boolean } 
     CormorantGaramond_600SemiBold,
     CormorantGaramond_700Bold,
     CormorantGaramond_500Medium_Italic,
-    Forum_400Regular,
+    CormorantGaramond_600SemiBold_Italic,
   });
 
   useEffect(() => {

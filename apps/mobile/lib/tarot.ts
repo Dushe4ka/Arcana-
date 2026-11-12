@@ -11,15 +11,26 @@ export type TarotCard = {
 /* eslint-disable @typescript-eslint/no-require-imports */
 export const CARD_BACK: ImageSourcePropType = require("../assets/tarot/back.jpg");
 /** Every card on the table has the same frame: the proportion of the card back (9:16).
- * Artwork drawn in another proportion is fitted into it, so card art should be exported
- * at 9:16 like the back. */
+ * Card art is exported at 9:16 like the back. */
 export const CARD_ASPECT = 1137 / 640;
 
 export const TAROT_DECK: TarotCard[] = [
+  { id: "magician", name: "Маг", image: require("../assets/tarot/magician.jpg") },
+  { id: "high-priestess", name: "Верховная Жрица", image: require("../assets/tarot/high-priestess.jpg") },
+  { id: "empress", name: "Императрица", image: require("../assets/tarot/empress.jpg") },
   { id: "emperor", name: "Император", image: require("../assets/tarot/emperor.jpg") },
+  { id: "hierophant", name: "Иерофант", image: require("../assets/tarot/hierophant.jpg") },
   { id: "lovers", name: "Влюблённые", image: require("../assets/tarot/lovers.jpg") },
+  { id: "chariot", name: "Колесница", image: require("../assets/tarot/chariot.jpg") },
+  { id: "justice", name: "Справедливость", image: require("../assets/tarot/justice.jpg") },
   { id: "hermit", name: "Отшельник", image: require("../assets/tarot/hermit.jpg") },
   { id: "wheel", name: "Колесо Фортуны", image: require("../assets/tarot/wheel.jpg") },
+  { id: "strength", name: "Сила", image: require("../assets/tarot/strength.jpg") },
+  { id: "hanged-man", name: "Повешенный", image: require("../assets/tarot/hanged-man.jpg") },
+  { id: "death", name: "Смерть", image: require("../assets/tarot/death.jpg") },
+  { id: "temperance", name: "Умеренность", image: require("../assets/tarot/temperance.jpg") },
+  { id: "devil", name: "Дьявол", image: require("../assets/tarot/devil.jpg") },
+  { id: "tower", name: "Башня", image: require("../assets/tarot/tower.jpg") },
 ];
 /* eslint-enable @typescript-eslint/no-require-imports */
 

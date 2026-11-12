@@ -230,10 +230,10 @@ const styles = StyleSheet.create({
   bottom: { alignItems: "center", paddingBottom: 26, gap: 18 },
   caption: { alignItems: "center", gap: 4, paddingHorizontal: 24 },
   title: {
-    color: colors.text,
-    fontSize: 30,
-    lineHeight: 36,
-    letterSpacing: 1,
+    // Between the cream of the text and the gold of "Вытяни карту".
+    color: "#e4cda5",
+    fontSize: 34,
+    lineHeight: 40,
     fontFamily: fonts.oracle,
     textAlign: "center",
     textShadowColor: "rgba(0,0,0,0.9)",

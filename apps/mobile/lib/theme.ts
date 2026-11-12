@@ -51,8 +51,8 @@ export const fonts = {
   grimoire: "CormorantGaramond_600SemiBold",
   grimoireBold: "CormorantGaramond_700Bold",
   grimoireItalic: "CormorantGaramond_500Medium_Italic",
-  /** Classical Roman capitals, the same voice as the captions printed on the tarot cards. */
-  oracle: "Forum_400Regular",
+  /** The fortune table's question - a heavier italic than grimoireItalic, so it leads. */
+  oracle: "CormorantGaramond_600SemiBold_Italic",
 };
 
 /** Bookcase woods - all inside the app's chocolate / coffee range, so the furniture

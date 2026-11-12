@@ -121,9 +121,6 @@ importers:
       '@expo-google-fonts/cormorant-garamond':
         specifier: ^0.4.1
         version: 0.4.1
-      '@expo-google-fonts/forum':
-        specifier: ^0.4.1
-        version: 0.4.1
       '@expo-google-fonts/playfair-display':
         specifier: ^0.4.2
         version: 0.4.2
@@ -801,9 +798,6 @@ packages:
 
   '@expo-google-fonts/cormorant-garamond@0.4.1':
     resolution: {integrity: sha512-e8J4Cn13K1txygamg50n3odLUsYP7Ck28XOGobMi7uDsWvFmp/jgK0qcALqJTlmi9NczSWUNdERxcLauHCBa/Q==}
-
-  '@expo-google-fonts/forum@0.4.1':
-    resolution: {integrity: sha512-2F9LNjzFvomgS/h/Yx3S/pJXXO3hn0YtAIlssLtKs+LqPN6SKvyb8USzzYNoTOf4iBZQAo3JcQ78lNeRo5/Dig==}
 
   '@expo-google-fonts/playfair-display@0.4.2':
     resolution: {integrity: sha512-mWhBV59RUjSS3aYpytUb7UyHHTnXcHh7epAn7gq+M4XAEh5PuMKUrP8eiUfkJLb6UwHZCi7EhQpUzxHu5OL96w==}
@@ -6042,8 +6036,6 @@ snapshots:
       levn: 0.4.1
 
   '@expo-google-fonts/cormorant-garamond@0.4.1': {}
-
-  '@expo-google-fonts/forum@0.4.1': {}
 
   '@expo-google-fonts/playfair-display@0.4.2': {}
 
