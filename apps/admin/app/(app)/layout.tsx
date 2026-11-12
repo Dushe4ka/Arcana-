@@ -33,8 +33,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-full">
-      <nav className="sticky top-0 z-10 flex items-center justify-between border-b border-neutral-300 bg-white px-6 py-3">
-        <div className="flex items-center gap-6">
+      {/* Sticky only where there is room for it: on a phone the wrapped nav would eat the screen. */}
+      <nav className="z-10 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-neutral-300 bg-white px-4 py-3 md:sticky md:top-0 md:px-6">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
           <span className="font-semibold">Arcana Admin</span>
           <Link href="/stories" className="text-sm text-neutral-600 hover:text-neutral-900">
             Истории
@@ -51,7 +52,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           )}
         </div>
         <div className="flex items-center gap-4 text-sm text-neutral-600">
-          <span>{user?.email}</span>
+          <span className="hidden sm:inline">{user?.email}</span>
           <button
             onClick={async () => {
               await logout();
@@ -63,7 +64,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </nav>
-      <main className="p-6">{children}</main>
+      <main className="p-4 md:p-6">{children}</main>
     </div>
   );
 }

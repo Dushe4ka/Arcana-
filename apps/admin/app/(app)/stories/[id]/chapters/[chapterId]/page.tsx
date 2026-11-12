@@ -626,7 +626,7 @@ export default function SceneEditorPage() {
         disabled={isQuickActionPending}
       />
 
-      <div className="flex gap-2 text-sm">
+      <div className="flex flex-wrap gap-x-3 gap-y-2 text-sm">
         <button
           onClick={() => setView("list")}
           className={view === "list" ? "font-semibold underline" : "text-neutral-600"}
@@ -669,10 +669,10 @@ export default function SceneEditorPage() {
             .sort((a, b) => a.order - b.order)
             .map((node) => (
               <li key={node.id}>
-                <div className="flex items-center justify-between px-4 py-3">
+                <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <button
                     onClick={() => setSelectedNodeId(selectedNodeId === node.id ? null : node.id)}
-                    className="flex-1 text-left"
+                    className="min-w-0 flex-1 text-left"
                   >
                     <span className="mr-2 rounded bg-neutral-100 px-2 py-0.5 text-xs">
                       {NODE_TYPE_LABELS[node.type]}
@@ -682,7 +682,15 @@ export default function SceneEditorPage() {
                       <span className="ml-2 text-xs text-green-700">начальная сцена</span>
                     )}
                   </button>
-                  <div className="flex gap-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                    {/* The row itself opens the editor too, but nothing said so - the owner could
+                        not find where background and music are set. */}
+                    <button
+                      onClick={() => setSelectedNodeId(selectedNodeId === node.id ? null : node.id)}
+                      className="rounded border border-neutral-300 px-3 py-1.5 font-medium text-neutral-800"
+                    >
+                      {selectedNodeId === node.id ? "Свернуть" : "Изменить"}
+                    </button>
                     <Link
                       href={previewHref(storyId, chapterId, node.id)}
                       className="text-neutral-600 underline"

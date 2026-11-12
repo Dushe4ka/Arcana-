@@ -117,7 +117,7 @@ export function QuickAddToolbar({
 
   return (
     <div
-      className="sticky z-[5] border-b border-neutral-200 bg-white/95 py-3 backdrop-blur"
+      className="z-[5] border-b border-neutral-200 bg-white/95 py-3 backdrop-blur md:sticky"
       style={{ top: navHeight }}
     >
       <div className="flex flex-wrap items-center gap-2">
